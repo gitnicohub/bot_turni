@@ -1,0 +1,105 @@
+import random
+from datetime import date, datetime, timedelta
+from pathlib import Path
+from typing import List, Dict, Any, Optional
+from urllib.parse import urlencode
+
+PUNISHMENT_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
+
+GOOGLE_CALENDAR_BASE_URL = "https://calendar.google.com/calendar/render"
+WEEKDAY_LABELS = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"]
+
+# Insulti goliardici per il turno mancato: tono esagerato e da presa in giro
+# tra coinquilini, senza bestemmie né riferimenti a familiari.
+PUNISHMENT_INSULTS = [
+    "🚨 *{name}*, il turno *{task}* ti aspettava e tu l'hai bidonato come un appuntamento al buio andato male. Vergognati, campione della latitanza! 🏆🙈",
+    "😤 Allora *{name}*, il *{task}* è ancora lì, intonso, che ti guarda deluso. Sei ufficialmente il re/la regina della procrastinazione domestica! 👑🦥",
+    "🧻 *{name}*, hai skippato *{task}* con la stessa nonchalance con cui skippi le sveglie. La casa piange, i coinquilini pure. 😭🏠",
+    "🐌 Più lento di *{name}* sul turno di *{task}* c'è solo una lumaca in pensione. Fatti perdonare, o la fama ti precede! 🐌📉",
+    "🎭 *{name}*, il tuo *{task}* non pervenuto merita un Oscar nella categoria 'Miglior sparizione improvvisa'. Applausi. 👏🫠",
+]
+
+
+def escape_markdown(text: str) -> str:
+    """Esegue l'escape dei caratteri speciali per Telegram MarkdownV2."""
+    escape_chars = r'_*[]()~`>#+-=|{}.!'
+    return ''.join(f'\\{c}' if c in escape_chars else c for c in text)
+
+
+def build_google_calendar_link(task_name: str, scheduled_date: Any) -> str:
+    """Genera un link precompilato per aggiungere il turno a Google Calendar."""
+    if isinstance(scheduled_date, str):
+        day = datetime.strptime(scheduled_date, "%Y-%m-%d").date()
+    else:
+        day = scheduled_date
+
+    start = day.strftime("%Y%m%d")
+    end = (day + timedelta(days=1)).strftime("%Y%m%d")
+    params = {
+        "action": "TEMPLATE",
+        "text": f"Turno pulizie: {task_name}",
+        "dates": f"{start}/{end}",
+        "details": f"Promemoria turno di pulizia '{task_name}' assegnato dal Bot Turni di casa.",
+    }
+    return f"{GOOGLE_CALENDAR_BASE_URL}?{urlencode(params)}"
+
+
+def pick_random_punishment_image(images_dir: str) -> Optional[Path]:
+    """Sceglie a caso un file immagine dalla cartella delle immagini punitive.
+
+    Restituisce None se la cartella non esiste o non contiene immagini valide.
+    """
+    folder = Path(images_dir)
+    if not folder.is_dir():
+        return None
+
+    images = [
+        f for f in folder.iterdir()
+        if f.is_file() and f.suffix.lower() in PUNISHMENT_IMAGE_EXTENSIONS
+    ]
+    if not images:
+        return None
+
+    return random.choice(images)
+
+
+RANK_MEDALS = ["🥇", "🥈", "🥉"]
+
+
+def format_weekly_report(monday: date, week_shifts: List[Dict[str, Any]], ranking: List[Dict[str, Any]]) -> str:
+    """Formatta il resoconto del sabato: esito della settimana appena conclusa + classifica generale."""
+    sunday = monday + timedelta(days=6)
+    lines = [
+        f"🗓️ *Resoconto settimanale* ({monday.strftime('%d/%m')} - {sunday.strftime('%d/%m')})\n"
+    ]
+
+    if not week_shifts:
+        lines.append("Nessun turno era stato generato questa settimana.\n")
+    else:
+        for s in week_shifts:
+            status = "✅" if s.get("is_completed") else "❌"
+            lines.append(f"{status} {s['task_name']}: {s['user_name']}")
+        lines.append("")
+
+    lines.append("🏆 *Classifica generale* (completati / mancati)")
+    for i, r in enumerate(ranking):
+        prefix = RANK_MEDALS[i] if i < len(RANK_MEDALS) else f"{i + 1}."
+        lines.append(f"{prefix} {r['user_name']} — {r['completed']} ✅ / {r['missed']} ❌")
+
+    return "\n".join(lines)
+
+
+def format_weekly_calendar(shifts: List[Dict[str, Any]]) -> str:
+    """Formatta il calendario settimanale dei turni, raggruppato per giorno."""
+    if not shifts:
+        return "🧹 Nessun turno generato per questa settimana."
+
+    lines = ["📅 *Calendario Turni della Settimana:*\n"]
+    for s in shifts:
+        day = datetime.strptime(s["scheduled_date"], "%Y-%m-%d").date()
+        weekday_label = WEEKDAY_LABELS[day.weekday()]
+        status = "✅" if s.get("is_completed") else "🕒"
+        lines.append(f"{status} *{weekday_label}* — {s['task_name']}: {s['user_name']}")
+
+    lines.append("\n💡 Usa `/fatto` oppure rispondi al promemoria delle 23:00 per confermare.")
+    return "\n".join(lines)
