@@ -217,11 +217,14 @@ class DatabaseManager:
         query = """
         SELECT
             s.id AS shift_id,
+            s.task_id AS task_id,
+            s.user_id AS user_id,
             t.name AS task_name,
             u.name AS user_name,
             u.telegram_id AS telegram_id,
             s.scheduled_date,
-            s.is_completed
+            s.is_completed,
+            s.reschedule_used
         FROM shifts s
         JOIN cleaning_tasks t ON s.task_id = t.id
         JOIN users u ON s.user_id = u.id
@@ -232,6 +235,59 @@ class DatabaseManager:
             async with db.execute(query, (shift_id,)) as cursor:
                 row = await cursor.fetchone()
                 return dict(row) if row else None
+
+    @staticmethod
+    async def reschedule_shift(shift_id: int, new_date: date) -> bool:
+        """Sposta un turno fallito a un altro giorno della stessa settimana (una sola volta).
+
+        Resetta `notified` così la verifica serale scatterà di nuovo nel nuovo
+        giorno. Restituisce False se il turno non esiste più o se l'occasione
+        di spostamento era già stata usata (o consumata con "Non spostare").
+        """
+        query = """
+        UPDATE shifts
+        SET scheduled_date = ?, notified = 0, reschedule_used = 1
+        WHERE id = ? AND reschedule_used = 0;
+        """
+        async with aiosqlite.connect(DATABASE_PATH) as db:
+            try:
+                cursor = await db.execute(query, (new_date.isoformat(), shift_id))
+            except aiosqlite.IntegrityError:
+                return False
+            await db.commit()
+            return cursor.rowcount > 0
+
+    @staticmethod
+    async def mark_reschedule_declined(shift_id: int) -> bool:
+        """Consuma l'occasione di spostamento senza cambiare data ("Non spostare")."""
+        query = """
+        UPDATE shifts SET reschedule_used = 1
+        WHERE id = ? AND reschedule_used = 0;
+        """
+        async with aiosqlite.connect(DATABASE_PATH) as db:
+            cursor = await db.execute(query, (shift_id,))
+            await db.commit()
+            return cursor.rowcount > 0
+
+    @staticmethod
+    async def get_last_calendar_message(telegram_id: int) -> Optional[int]:
+        """Recupera l'ID dell'ultimo messaggio-calendario inviato a un utente, se esiste."""
+        query = "SELECT message_id FROM calendar_broadcasts WHERE telegram_id = ?;"
+        async with aiosqlite.connect(DATABASE_PATH) as db:
+            async with db.execute(query, (telegram_id,)) as cursor:
+                row = await cursor.fetchone()
+                return row[0] if row else None
+
+    @staticmethod
+    async def set_last_calendar_message(telegram_id: int, message_id: int) -> None:
+        """Registra l'ID dell'ultimo messaggio-calendario inviato a un utente (per poterlo ripulire in seguito)."""
+        query = """
+        INSERT INTO calendar_broadcasts (telegram_id, message_id) VALUES (?, ?)
+        ON CONFLICT(telegram_id) DO UPDATE SET message_id = excluded.message_id;
+        """
+        async with aiosqlite.connect(DATABASE_PATH) as db:
+            await db.execute(query, (telegram_id, message_id))
+            await db.commit()
 
     @staticmethod
     async def mark_shift_completed(shift_id: int, telegram_id: int) -> bool:

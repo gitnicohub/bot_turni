@@ -5,6 +5,7 @@ from typing import List, Dict, Any, Optional
 from urllib.parse import urlencode
 
 PUNISHMENT_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
+PUNISHMENT_AUDIO_EXTENSIONS = {".mp3", ".ogg", ".oga", ".opus", ".wav", ".m4a"}
 
 GOOGLE_CALENDAR_BASE_URL = "https://calendar.google.com/calendar/render"
 WEEKDAY_LABELS = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"]
@@ -18,6 +19,11 @@ PUNISHMENT_INSULTS = [
     "🐌 Più lento di *{name}* sul turno di *{task}* c'è solo una lumaca in pensione. Fatti perdonare, o la fama ti precede! 🐌📉",
     "🎭 *{name}*, il tuo *{task}* non pervenuto merita un Oscar nella categoria 'Miglior sparizione improvvisa'. Applausi. 👏🫠",
 ]
+
+
+def monday_of(day: date) -> date:
+    """Restituisce il lunedì della settimana a cui appartiene `day`."""
+    return day - timedelta(days=day.weekday())
 
 
 def escape_markdown(text: str) -> str:
@@ -63,6 +69,25 @@ def pick_random_punishment_image(images_dir: str) -> Optional[Path]:
     return random.choice(images)
 
 
+def pick_random_punishment_audio(audio_dir: str) -> Optional[Path]:
+    """Sceglie a caso un file audio dalla cartella delle immagini punitive.
+
+    Restituisce None se la cartella non esiste o non contiene audio validi.
+    """
+    folder = Path(audio_dir)
+    if not folder.is_dir():
+        return None
+
+    audios = [
+        f for f in folder.iterdir()
+        if f.is_file() and f.suffix.lower() in PUNISHMENT_AUDIO_EXTENSIONS
+    ]
+    if not audios:
+        return None
+
+    return random.choice(audios)
+
+
 RANK_MEDALS = ["🥇", "🥈", "🥉"]
 
 
@@ -89,17 +114,34 @@ def format_weekly_report(monday: date, week_shifts: List[Dict[str, Any]], rankin
     return "\n".join(lines)
 
 
+WEEKDAY_EMOJIS = ["🔥", "🌊", "🌪️", "⚡", "🎉", "🌈", "🌙"]
+SEPARATOR = "━━━━━━━━━━━━━━━"
+
+
 def format_weekly_calendar(shifts: List[Dict[str, Any]]) -> str:
     """Formatta il calendario settimanale dei turni, raggruppato per giorno."""
     if not shifts:
-        return "🧹 Nessun turno generato per questa settimana."
+        return "🧹✨ Nessun turno generato per questa settimana."
 
-    lines = ["📅 *Calendario Turni della Settimana:*\n"]
+    monday = min(datetime.strptime(s["scheduled_date"], "%Y-%m-%d").date() for s in shifts)
+    sunday = monday + timedelta(days=6)
+
+    lines = [
+        f"📅✨ *CALENDARIO TURNI* ✨📅",
+        f"_{monday.strftime('%d/%m')} - {sunday.strftime('%d/%m')}_",
+        SEPARATOR,
+    ]
+
     for s in shifts:
         day = datetime.strptime(s["scheduled_date"], "%Y-%m-%d").date()
         weekday_label = WEEKDAY_LABELS[day.weekday()]
-        status = "✅" if s.get("is_completed") else "🕒"
-        lines.append(f"{status} *{weekday_label}* — {s['task_name']}: {s['user_name']}")
+        day_emoji = WEEKDAY_EMOJIS[day.weekday()]
+        status = "✅ Completato" if s.get("is_completed") else "🕒 In attesa"
 
-    lines.append("\n💡 Usa `/fatto` oppure rispondi al promemoria delle 23:00 per confermare.")
+        lines.append(f"{day_emoji} *{weekday_label.upper()}*")
+        lines.append(f"   🧽 `{s['task_name'].upper()}` ➜ 👤 *{s['user_name']}*")
+        lines.append(f"   {status}\n")
+
+    lines.append(SEPARATOR)
+    lines.append("💡 Usa `/fatto` oppure rispondi al promemoria delle 23:00 per confermare.")
     return "\n".join(lines)

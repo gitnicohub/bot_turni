@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS shifts (
     is_completed INTEGER DEFAULT 0,
     completed_at TIMESTAMP,
     notified INTEGER DEFAULT 0,
+    reschedule_used INTEGER DEFAULT 0,
     FOREIGN KEY (task_id) REFERENCES cleaning_tasks (id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
     UNIQUE (task_id, scheduled_date)
@@ -39,6 +40,13 @@ CREATE TABLE IF NOT EXISTS shifts (
 
 # I 5 turni della casa, in ordine fisso: l'ordine determina la mappatura
 # sui giorni Lun-Ven nella generazione ciclica settimanale (vedi db_manager.compute_week_assignments)
+CREATE_CALENDAR_BROADCASTS_TABLE = """
+CREATE TABLE IF NOT EXISTS calendar_broadcasts (
+    telegram_id INTEGER PRIMARY KEY,
+    message_id INTEGER NOT NULL
+);
+"""
+
 DEFAULT_TASKS = [
     ("bagno1", "Pulizia bagno 1: sanitari, doccia e specchio"),
     ("bagno2", "Pulizia bagno 2: sanitari, doccia e specchio"),
@@ -47,6 +55,14 @@ DEFAULT_TASKS = [
     ("infrasettimanale", "Giro di pulizia extra infrasettimanale della cucina"),
 ]
 
+async def _ensure_column(db, table: str, column: str, ddl: str) -> None:
+    """Aggiunge una colonna a una tabella già esistente se non è ancora presente."""
+    async with db.execute(f"PRAGMA table_info({table});") as cursor:
+        columns = {row[1] for row in await cursor.fetchall()}
+    if column not in columns:
+        await db.execute(f"ALTER TABLE {table} ADD COLUMN {ddl};")
+
+
 async def init_db():
     """Crea le tabelle nel database SQLite e popola mansioni e coinquilini di default."""
     logger.info("Inizializzazione database SQLite su: %s", DATABASE_PATH)
@@ -54,6 +70,10 @@ async def init_db():
         await db.execute(CREATE_USERS_TABLE)
         await db.execute(CREATE_TASKS_TABLE)
         await db.execute(CREATE_SHIFTS_TABLE)
+        await db.execute(CREATE_CALENDAR_BROADCASTS_TABLE)
+
+        # Migrazione: DB creati prima dell'introduzione dello spostamento turni
+        await _ensure_column(db, "shifts", "reschedule_used", "reschedule_used INTEGER DEFAULT 0")
 
         # Popolamento iniziale mansioni predefinite
         for name, desc in DEFAULT_TASKS:

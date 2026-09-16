@@ -1,5 +1,6 @@
 import logging
 import sys
+from telegram import BotCommand
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler
 from config import BOT_TOKEN
 from database.db_setup import init_db
@@ -10,6 +11,7 @@ from handlers import (
     mark_done_command,
     claim_callback,
     verify_callback,
+    reschedule_callback,
 )
 from scheduler.scheduler_jobs import setup_scheduled_jobs
 
@@ -20,10 +22,18 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+BOT_COMMANDS = [
+    BotCommand("start", "Registrati come coinquilino"),
+    BotCommand("help", "Mostra i comandi disponibili"),
+    BotCommand("turni", "Calendario turni della settimana"),
+    BotCommand("fatto", "Segna il tuo turno come completato"),
+]
+
 async def post_init(application) -> None:
     """Hook eseguito all'avvio del bot per inizializzare risorse asincrone."""
     logger.info("Esecuzione hook di avvio post_init: verifica database...")
     await init_db()
+    await application.bot.set_my_commands(BOT_COMMANDS)
     logger.info("Inizializzazione completata.")
 
 def main() -> None:
@@ -50,6 +60,7 @@ def main() -> None:
     application.add_handler(CommandHandler("fatto", mark_done_command))
     application.add_handler(CallbackQueryHandler(claim_callback, pattern=r"^claim:"))
     application.add_handler(CallbackQueryHandler(verify_callback, pattern=r"^verify:"))
+    application.add_handler(CallbackQueryHandler(reschedule_callback, pattern=r"^reschedule:"))
 
     # Configurazione dei task schedulati (se JobQueue è disponibile)
     if application.job_queue:
