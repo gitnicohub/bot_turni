@@ -6,23 +6,32 @@ from config import DATABASE_PATH
 
 
 def compute_week_assignments(
-    monday: date, task_ids: List[int], user_ids: List[int]
+    monday: date,
+    task_ids: List[int],
+    user_ids: List[int],
+    all_task_ids: Optional[List[int]] = None,
 ) -> List[tuple]:
     """Assegna a caso i turni della settimana tra i coinquilini.
 
     I coinquilini vengono rimescolati (shuffle) e abbinati 1:1 ai turni,
     così l'assegnazione cambia ogni settimana e nessuno si ritrova sempre
-    con lo stesso turno. Il turno i (in ordine fisso) è programmato sul
-    giorno monday + i (Lun..Ven per 5 turni). Una volta generata, la
-    settimana viene salvata in DB e non viene più ricalcolata (vedi
-    ensure_week_shifts), quindi lo shuffle avviene una sola volta a settimana.
+    con lo stesso turno. Il turno di un task è programmato su monday + il
+    suo indice nell'ordine fisso delle mansioni (Lun..Ven per 5 turni).
+
+    `task_ids` può essere un sottoinsieme (es. solo i task ancora privi di
+    turno in settimana): `all_task_ids`, l'elenco completo ordinato, serve
+    in quel caso per calcolare comunque il giorno corretto di ciascun task
+    tramite il suo indice originale, invece di quello nella lista filtrata.
     """
+    order_reference = all_task_ids if all_task_ids is not None else task_ids
+    day_offset = {tid: i for i, tid in enumerate(order_reference)}
+
     shuffled_users = user_ids.copy()
     random.shuffle(shuffled_users)
     n = len(shuffled_users)
     assignments = []
     for i, task_id in enumerate(task_ids):
-        scheduled_date = monday + timedelta(days=i)
+        scheduled_date = monday + timedelta(days=day_offset[task_id])
         assignments.append((task_id, shuffled_users[i % n], scheduled_date))
     return assignments
 
@@ -88,7 +97,16 @@ class DatabaseManager:
 
     @staticmethod
     async def ensure_week_shifts(monday: date) -> None:
-        """Genera (se non esistono già) i turni della settimana che inizia a `monday`."""
+        """Genera (se non esistono già) i turni della settimana che inizia a `monday`.
+
+        Un task è considerato "già generato" se ha uno shift in un punto
+        QUALSIASI della settimana, non solo nel suo giorno canonico: un
+        turno spostato con /reschedule (vedi reschedule_shift) libera il
+        giorno originale, e questa funzione viene richiamata di nuovo ad
+        ogni /turni e /fatto, non solo dal job del lunedì. Senza questo
+        controllo, il giorno liberato verrebbe ririempito con un turno
+        duplicato per lo stesso task.
+        """
         tasks = await DatabaseManager.get_tasks()
         users = await DatabaseManager.get_roommates()
         task_ids = [t["id"] for t in tasks]
@@ -96,8 +114,21 @@ class DatabaseManager:
         if not task_ids or not user_ids:
             return
 
-        assignments = compute_week_assignments(monday, task_ids, user_ids)
+        sunday = monday + timedelta(days=6)
         async with aiosqlite.connect(DATABASE_PATH) as db:
+            async with db.execute(
+                "SELECT DISTINCT task_id FROM shifts WHERE scheduled_date BETWEEN ? AND ?;",
+                (monday.isoformat(), sunday.isoformat()),
+            ) as cursor:
+                existing_task_ids = {row[0] for row in await cursor.fetchall()}
+
+            pending_task_ids = [t for t in task_ids if t not in existing_task_ids]
+            if not pending_task_ids:
+                return
+
+            assignments = compute_week_assignments(
+                monday, pending_task_ids, user_ids, all_task_ids=task_ids
+            )
             for task_id, user_id, scheduled_date in assignments:
                 await db.execute(
                     "INSERT OR IGNORE INTO shifts (task_id, user_id, scheduled_date) VALUES (?, ?, ?);",
