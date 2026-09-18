@@ -44,11 +44,16 @@ async def evening_verification_job(context: ContextTypes.DEFAULT_TYPE) -> None:
             logger.warning("Impossibile inviare verifica serale all'utente %s: %s", s["telegram_id"], e)
 
 async def weekly_report_job(context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Task del sabato mattina: resoconto della settimana + classifica generale a tutti i registrati."""
+    """Task del lunedì mattina: resoconto della settimana appena conclusa + classifica generale a tutti i registrati.
+
+    Viene inviato il lunedì successivo (non il sabato) apposta: i turni di
+    sabato e domenica devono avere il tempo di essere completati e passare
+    dalla verifica serale delle 23:00 prima che il resoconto li includa.
+    """
     logger.info("Esecuzione job: resoconto settimanale.")
     tz = pytz.timezone(TIMEZONE)
     today = datetime.datetime.now(tz).date()
-    monday = today - datetime.timedelta(days=today.weekday())
+    monday = today - datetime.timedelta(days=today.weekday() + 7)
 
     week_shifts = await DatabaseManager.get_shifts_for_week(monday)
     ranking = await DatabaseManager.get_all_time_stats(today)
@@ -84,16 +89,18 @@ def setup_scheduled_jobs(job_queue) -> None:
         name="evening_verification",
     )
 
-    # Resoconto settimanale: sabato mattina (5 = sabato per JobQueue.run_daily)
+    # Resoconto settimanale: lunedì mattina (0 = lunedì), sulla settimana appena
+    # conclusa (non sabato: i turni di sabato/domenica devono poter essere
+    # completati prima che il resoconto venga generato)
     job_queue.run_daily(
         weekly_report_job,
         time=datetime.time(hour=9, minute=0, tzinfo=tz),
-        days=(5,),
+        days=(0,),
         name="weekly_report",
     )
 
     logger.info(
         "Job schedulati: generazione turni lunedì 07:00, verifica serale ogni giorno 23:00, "
-        "resoconto settimanale sabato 09:00 (%s).",
+        "resoconto settimanale lunedì 09:00 sulla settimana precedente (%s).",
         TIMEZONE
     )

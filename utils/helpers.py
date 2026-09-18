@@ -89,33 +89,43 @@ def pick_random_punishment_audio(audio_dir: str) -> Optional[Path]:
 
 
 RANK_MEDALS = ["🥇", "🥈", "🥉"]
+WEEKDAY_EMOJIS = ["🔥", "🌊", "🌪️", "⚡", "🎉", "🌈", "🌙"]
+SEPARATOR = "━━━━━━━━━━━━━━━"
 
 
 def format_weekly_report(monday: date, week_shifts: List[Dict[str, Any]], ranking: List[Dict[str, Any]]) -> str:
-    """Formatta il resoconto del sabato: esito della settimana appena conclusa + classifica generale."""
+    """Formatta il resoconto della settimana appena conclusa (esito turni + classifica generale).
+
+    Stesso stile a blocchi giorno-per-giorno di format_weekly_calendar, per
+    coerenza visiva tra i due messaggi.
+    """
     sunday = monday + timedelta(days=6)
     lines = [
-        f"🗓️ *Resoconto settimanale* ({monday.strftime('%d/%m')} - {sunday.strftime('%d/%m')})\n"
+        "📊✨ *RESOCONTO SETTIMANALE* ✨📊",
+        f"_{monday.strftime('%d/%m')} - {sunday.strftime('%d/%m')}_",
+        SEPARATOR,
     ]
 
     if not week_shifts:
-        lines.append("Nessun turno era stato generato questa settimana.\n")
+        lines.append("🧹✨ Nessun turno era stato generato questa settimana.\n")
     else:
         for s in week_shifts:
-            status = "✅" if s.get("is_completed") else "❌"
-            lines.append(f"{status} {s['task_name']}: {s['user_name']}")
-        lines.append("")
+            day = datetime.strptime(s["scheduled_date"], "%Y-%m-%d").date()
+            weekday_label = WEEKDAY_LABELS[day.weekday()]
+            day_emoji = WEEKDAY_EMOJIS[day.weekday()]
+            status = "✅ Completato" if s.get("is_completed") else "❌ Non completato"
 
-    lines.append("🏆 *Classifica generale* (completati / mancati)")
+            lines.append(f"{day_emoji} *{weekday_label.upper()}*")
+            lines.append(f"   🧽 `{s['task_name'].upper()}` ➜ 👤 *{s['user_name']}*")
+            lines.append(f"   {status}\n")
+
+    lines.append(SEPARATOR)
+    lines.append("🏆 *CLASSIFICA GENERALE* _(completati ✅ / mancati ❌)_\n")
     for i, r in enumerate(ranking):
         prefix = RANK_MEDALS[i] if i < len(RANK_MEDALS) else f"{i + 1}."
-        lines.append(f"{prefix} {r['user_name']} — {r['completed']} ✅ / {r['missed']} ❌")
+        lines.append(f"{prefix} *{r['user_name']}* — {r['completed']} ✅ / {r['missed']} ❌")
 
     return "\n".join(lines)
-
-
-WEEKDAY_EMOJIS = ["🔥", "🌊", "🌪️", "⚡", "🎉", "🌈", "🌙"]
-SEPARATOR = "━━━━━━━━━━━━━━━"
 
 
 def format_weekly_calendar(shifts: List[Dict[str, Any]]) -> str:
