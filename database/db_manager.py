@@ -365,6 +365,43 @@ class DatabaseManager:
             await db.commit()
 
     @staticmethod
+    async def add_audit_entry(
+        telegram_id: Optional[int],
+        username: Optional[str],
+        full_name: Optional[str],
+        chat_id: Optional[int],
+        event_type: str,
+        content: Optional[str],
+    ) -> None:
+        """Registra un'azione compiuta da un utente sul bot (audit log)."""
+        query = """
+        INSERT INTO audit_log (telegram_id, username, full_name, chat_id, event_type, content)
+        VALUES (?, ?, ?, ?, ?, ?);
+        """
+        async with aiosqlite.connect(DATABASE_PATH) as db:
+            await db.execute(query, (telegram_id, username, full_name, chat_id, event_type, content))
+            await db.commit()
+
+    @staticmethod
+    async def get_audit_entries(limit: int) -> List[Dict[str, Any]]:
+        """Ultime `limit` voci dell'audit log (dalla più vecchia alla più recente), col nome da coinquilino se registrato."""
+        query = """
+        SELECT * FROM (
+            SELECT a.id, a.created_at, a.telegram_id, a.username, a.full_name,
+                   a.event_type, a.content, u.name AS roommate_name
+            FROM audit_log a
+            LEFT JOIN users u ON u.telegram_id = a.telegram_id
+            ORDER BY a.id DESC
+            LIMIT ?
+        ) ORDER BY id ASC;
+        """
+        async with aiosqlite.connect(DATABASE_PATH) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(query, (limit,)) as cursor:
+                rows = await cursor.fetchall()
+                return [dict(row) for row in rows]
+
+    @staticmethod
     async def mark_shift_completed(shift_id: int, telegram_id: int) -> bool:
         """Segna un turno come completato dall'utente assegnatario (via telegram_id)."""
         query = """

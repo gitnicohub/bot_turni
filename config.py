@@ -15,6 +15,12 @@ else:
 # Configurazione Bot Telegram
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
+# Telegram User ID dell'unico utente autorizzato a leggere l'audit log con /log.
+# Si usa l'ID numerico (immutabile) e non il nome/username, che si possono
+# cambiare o "rubare" con /start. Se vuoto, /log è disabilitato per tutti.
+_admin_id = os.getenv("ADMIN_TELEGRAM_ID", "").strip()
+ADMIN_TELEGRAM_ID = int(_admin_id) if _admin_id.isdigit() else None
+
 # Configurazione Database
 DATABASE_PATH = os.getenv("DATABASE_PATH", str(BASE_DIR / "bot_turni.db"))
 

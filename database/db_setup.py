@@ -47,6 +47,19 @@ CREATE TABLE IF NOT EXISTS calendar_broadcasts (
 );
 """
 
+CREATE_AUDIT_LOG_TABLE = """
+CREATE TABLE IF NOT EXISTS audit_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    telegram_id INTEGER,
+    username TEXT,
+    full_name TEXT,
+    chat_id INTEGER,
+    event_type TEXT NOT NULL,
+    content TEXT
+);
+"""
+
 DEFAULT_TASKS = [
     ("bagno1", "Pulizia bagno 1: sanitari, doccia e specchio"),
     ("bagno2", "Pulizia bagno 2: sanitari, doccia e specchio"),
@@ -71,6 +84,7 @@ async def init_db():
         await db.execute(CREATE_TASKS_TABLE)
         await db.execute(CREATE_SHIFTS_TABLE)
         await db.execute(CREATE_CALENDAR_BROADCASTS_TABLE)
+        await db.execute(CREATE_AUDIT_LOG_TABLE)
 
         # Migrazione: DB creati prima dell'introduzione dello spostamento turni
         await _ensure_column(db, "shifts", "reschedule_used", "reschedule_used INTEGER DEFAULT 0")
