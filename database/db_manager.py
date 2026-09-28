@@ -378,3 +378,18 @@ class DatabaseManager:
             cursor = await db.execute(query, (shift_id, telegram_id))
             await db.commit()
             return cursor.rowcount > 0
+
+    @staticmethod
+    async def mark_shift_uncompleted(shift_id: int, telegram_id: int) -> bool:
+        """Annulla il completamento di un turno (/annulla), solo se appartiene all'utente (via telegram_id)."""
+        query = """
+        UPDATE shifts
+        SET is_completed = 0, completed_at = NULL
+        WHERE id = ?
+          AND is_completed = 1
+          AND user_id = (SELECT id FROM users WHERE telegram_id = ?);
+        """
+        async with aiosqlite.connect(DATABASE_PATH) as db:
+            cursor = await db.execute(query, (shift_id, telegram_id))
+            await db.commit()
+            return cursor.rowcount > 0

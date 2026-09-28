@@ -7,6 +7,7 @@ from telegram.constants import ParseMode
 from config import TIMEZONE
 from database.db_manager import DatabaseManager
 from utils.helpers import format_weekly_calendar, build_google_calendar_link
+from scheduler.scheduler_jobs import build_previous_week_report
 
 logger = logging.getLogger(__name__)
 
@@ -81,3 +82,50 @@ async def mark_done_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         )
     else:
         await update.message.reply_text("⚠️ Impossibile completare il turno. Riprova più tardi.")
+
+async def undo_done_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Annulla un /fatto (o ✅) premuto per errore sul turno di questa settimana (/annulla)."""
+    user = update.effective_user
+    if not user:
+        return
+
+    registered = await DatabaseManager.get_user_by_telegram_id(user.id)
+    if not registered:
+        await update.message.reply_text(
+            "⚠️ Non risulti ancora registrato. Usa /start per selezionare il tuo nome tra i coinquilini."
+        )
+        return
+
+    monday = _current_monday()
+    shift = await DatabaseManager.get_current_week_shift_for_user(user.id, monday)
+
+    if not shift:
+        await update.message.reply_text(
+            f"🧹 Non risulta nessun turno assegnato a *{registered['name']}* questa settimana.",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        return
+
+    if not shift["is_completed"]:
+        await update.message.reply_text(
+            f"ℹ️ Il tuo turno di questa settimana (*{shift['task_name']}*) non risulta completato: niente da annullare.",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        return
+
+    success = await DatabaseManager.mark_shift_uncompleted(shift["shift_id"], user.id)
+    if success:
+        logger.info("Turno %d (%s) riportato a non completato da %s", shift["shift_id"], shift["task_name"], registered["name"])
+        await update.message.reply_text(
+            f"↩️ Ok *{registered['name']}*, turno *{shift['task_name']}* riportato a *non completato*.\n"
+            "Usa `/fatto` quando l'hai fatto davvero.",
+            parse_mode=ParseMode.MARKDOWN
+        )
+    else:
+        await update.message.reply_text("⚠️ Impossibile annullare il turno. Riprova più tardi.")
+
+async def report_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Mostra a richiesta il resoconto della settimana precedente + classifica generale (/report)."""
+    today = datetime.now(pytz.timezone(TIMEZONE)).date()
+    text = await build_previous_week_report(today)
+    await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)

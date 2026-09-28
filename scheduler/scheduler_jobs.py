@@ -43,6 +43,17 @@ async def evening_verification_job(context: ContextTypes.DEFAULT_TYPE) -> None:
         except Exception as e:
             logger.warning("Impossibile inviare verifica serale all'utente %s: %s", s["telegram_id"], e)
 
+async def build_previous_week_report(today: datetime.date) -> str:
+    """Testo del resoconto della settimana (lun-dom) precedente a quella di `today` + classifica generale.
+
+    Condiviso dal job del lunedì e dal comando /report, così i due messaggi
+    sono sempre identici.
+    """
+    monday = today - datetime.timedelta(days=today.weekday() + 7)
+    week_shifts = await DatabaseManager.get_shifts_for_week(monday)
+    ranking = await DatabaseManager.get_all_time_stats(today)
+    return format_weekly_report(monday, week_shifts, ranking)
+
 async def weekly_report_job(context: ContextTypes.DEFAULT_TYPE) -> None:
     """Task del lunedì mattina: resoconto della settimana appena conclusa + classifica generale a tutti i registrati.
 
@@ -53,11 +64,7 @@ async def weekly_report_job(context: ContextTypes.DEFAULT_TYPE) -> None:
     logger.info("Esecuzione job: resoconto settimanale.")
     tz = pytz.timezone(TIMEZONE)
     today = datetime.datetime.now(tz).date()
-    monday = today - datetime.timedelta(days=today.weekday() + 7)
-
-    week_shifts = await DatabaseManager.get_shifts_for_week(monday)
-    ranking = await DatabaseManager.get_all_time_stats(today)
-    text = format_weekly_report(monday, week_shifts, ranking)
+    text = await build_previous_week_report(today)
 
     roommates = await DatabaseManager.get_roommates()
     for r in roommates:

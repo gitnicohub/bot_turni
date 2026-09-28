@@ -50,7 +50,9 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "• `/start`: Associa il tuo account Telegram al tuo nome tra i coinquilini.\n"
         "• `/turni`: Visualizza il calendario settimanale dei turni con link Google Calendar.\n"
         "• `/fatto`: Segna come completato il turno assegnato a te questa settimana (il bot lo capisce da solo).\n"
+        "• `/annulla`: Annulla un `/fatto` (o ✅) premuto per errore sul tuo turno di questa settimana.\n"
+        "• `/report`: Resoconto della settimana scorsa con la classifica generale.\n"
         "• Ogni sera alle 23:00 riceverai un promemoria con bottoni ✅/❌ per confermare il turno del giorno.\n"
-        "• Ogni sabato mattina alle 9:00 arriva il resoconto settimanale con la classifica generale.\n"
+        "• Ogni lunedì alle 9:00 arriva il resoconto della settimana appena conclusa con la classifica generale.\n"
     )
     await update.message.reply_text(help_text, parse_mode=ParseMode.MARKDOWN)

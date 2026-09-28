@@ -19,7 +19,7 @@ bot_turni/
 ├── handlers/
 │   ├── __init__.py
 │   ├── start_handler.py      # Gestione /start e /help con auto-registrazione
-│   └── shifts_handler.py     # Gestione /turni e /fatto <ID>
+│   └── shifts_handler.py     # Gestione /turni, /fatto, /annulla e /report
 ├── scheduler/
 │   ├── __init__.py
 │   └── scheduler_jobs.py     # Task pianificati (promemoria orari/giornalieri)

@@ -1,6 +1,6 @@
 """Package contenente gli handler dei comandi Telegram."""
 from .start_handler import start_command, help_command
-from .shifts_handler import list_shifts_command, mark_done_command
+from .shifts_handler import list_shifts_command, mark_done_command, undo_done_command, report_command
 from .callback_handler import claim_callback, verify_callback, reschedule_callback
 
 __all__ = [
@@ -8,6 +8,8 @@ __all__ = [
     "help_command",
     "list_shifts_command",
     "mark_done_command",
+    "undo_done_command",
+    "report_command",
     "claim_callback",
     "verify_callback",
     "reschedule_callback",
