@@ -70,15 +70,20 @@ async def weekly_report_job(context: ContextTypes.DEFAULT_TYPE) -> None:
         except Exception as e:
             logger.warning("Impossibile inviare il resoconto settimanale a %s: %s", r["telegram_id"], e)
 
+# In PTB >= 20 `run_daily(days=...)` usa la numerazione cron 0-6 = domenica-sabato
+# (non lunedì-domenica come datetime.weekday()): con 0 i job del "lunedì"
+# partivano in realtà la domenica.
+MONDAY = 1
+
 def setup_scheduled_jobs(job_queue) -> None:
     """Configura i task programmati tramite APScheduler / JobQueue di PTB."""
     tz = pytz.timezone(TIMEZONE)
 
-    # Generazione turni: ogni lunedì mattina (0 = lunedì per JobQueue.run_daily)
+    # Generazione turni: ogni lunedì mattina
     job_queue.run_daily(
         generate_weekly_shifts_job,
         time=datetime.time(hour=7, minute=0, tzinfo=tz),
-        days=(0,),
+        days=(MONDAY,),
         name="weekly_shift_generation",
     )
 
@@ -89,13 +94,13 @@ def setup_scheduled_jobs(job_queue) -> None:
         name="evening_verification",
     )
 
-    # Resoconto settimanale: lunedì mattina (0 = lunedì), sulla settimana appena
+    # Resoconto settimanale: lunedì mattina, sulla settimana appena
     # conclusa (non sabato: i turni di sabato/domenica devono poter essere
     # completati prima che il resoconto venga generato)
     job_queue.run_daily(
         weekly_report_job,
         time=datetime.time(hour=9, minute=0, tzinfo=tz),
-        days=(0,),
+        days=(MONDAY,),
         name="weekly_report",
     )
 
