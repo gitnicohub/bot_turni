@@ -133,7 +133,9 @@ def format_weekly_calendar(shifts: List[Dict[str, Any]]) -> str:
     if not shifts:
         return "🧹✨ Nessun turno generato per questa settimana."
 
-    monday = min(datetime.strptime(s["scheduled_date"], "%Y-%m-%d").date() for s in shifts)
+    # Il primo turno può essere stato spostato in avanti (es. a mercoledì):
+    # l'intestazione deve comunque partire dal lunedì della sua settimana.
+    monday = monday_of(min(datetime.strptime(s["scheduled_date"], "%Y-%m-%d").date() for s in shifts))
     sunday = monday + timedelta(days=6)
 
     lines = [
