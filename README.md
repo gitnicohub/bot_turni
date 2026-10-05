@@ -48,13 +48,7 @@ pip install -r requirements.txt
 Crea una copia di `.env.example` rinominandola in `.env`:
 ```bash
 cp .env.example .env
-```
-Apri `.env` e inserisci il token ottenuto da [@BotFather](https://t.me/BotFather):
-```env
-TELEGRAM_BOT_TOKEN=123456789:ABCdefGHIjklMNOpqrsTUVwxyz
-DATABASE_PATH=bot_turni.db
-TIMEZONE=Europe/Rome
-```
+
 
 ### 4. Avviare il bot
 ```bash
