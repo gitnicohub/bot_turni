@@ -199,12 +199,21 @@ class DatabaseManager:
 
     @staticmethod
     async def get_all_time_stats(today: date) -> List[Dict[str, Any]]:
-        """Classifica cumulativa: turni completati vs mancati (solo quelli già scaduti) per persona."""
+        """Classifica cumulativa per persona: completati, mancati e in attesa.
+
+        Un turno non completato resta "in attesa" per tutta la sua settimana
+        (lun-dom): può ancora essere fatto con /fatto o spostato. Diventa
+        "mancato" solo quando la settimana scade, cioè dal lunedì successivo.
+        Contare gli in attesa a parte fa tornare i totali (completati +
+        mancati + in attesa = turni assegnati).
+        """
+        current_monday = today - timedelta(days=today.weekday())
         query = """
         SELECT
             u.name AS user_name,
             COALESCE(SUM(CASE WHEN s.is_completed = 1 THEN 1 ELSE 0 END), 0) AS completed,
-            COALESCE(SUM(CASE WHEN s.is_completed = 0 AND s.scheduled_date < ? THEN 1 ELSE 0 END), 0) AS missed
+            COALESCE(SUM(CASE WHEN s.is_completed = 0 AND s.scheduled_date < ? THEN 1 ELSE 0 END), 0) AS missed,
+            COALESCE(SUM(CASE WHEN s.is_completed = 0 AND s.scheduled_date >= ? THEN 1 ELSE 0 END), 0) AS pending
         FROM users u
         LEFT JOIN shifts s ON s.user_id = u.id
         GROUP BY u.id
@@ -212,7 +221,7 @@ class DatabaseManager:
         """
         async with aiosqlite.connect(DATABASE_PATH) as db:
             db.row_factory = aiosqlite.Row
-            async with db.execute(query, (today.isoformat(),)) as cursor:
+            async with db.execute(query, (current_monday.isoformat(), current_monday.isoformat())) as cursor:
                 rows = await cursor.fetchall()
                 return [dict(row) for row in rows]
 

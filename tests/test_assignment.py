@@ -179,7 +179,8 @@ def test_ensure_week_shifts_over_many_weeks(db):
     for prev, cur in zip(weeks, weeks[1:]):
         assert all(prev[t] != cur[t] for t in TASKS)
     counts = Counter((u, t) for t, u, _ in history)
-    assert max(counts.values()) - min(counts.values()) <= 1
+    # con il vincolo cucina/infrasettimanale il divario può arrivare a 2
+    assert max(counts.values()) - min(counts.values()) <= 2
 
 
 def test_ensure_week_shifts_is_idempotent_and_keeps_moved_shift(db):

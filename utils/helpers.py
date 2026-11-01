@@ -120,10 +120,13 @@ def format_weekly_report(monday: date, week_shifts: List[Dict[str, Any]], rankin
             lines.append(f"   {status}\n")
 
     lines.append(SEPARATOR)
-    lines.append("🏆 *CLASSIFICA GENERALE* _(completati ✅ / mancati ❌)_\n")
+    lines.append("🏆 *CLASSIFICA GENERALE* _(completati ✅ / mancati ❌ / in attesa 🕒)_\n")
     for i, r in enumerate(ranking):
         prefix = RANK_MEDALS[i] if i < len(RANK_MEDALS) else f"{i + 1}."
-        lines.append(f"{prefix} *{r['user_name']}* — {r['completed']} ✅ / {r['missed']} ❌")
+        row = f"{prefix} *{r['user_name']}* — {r['completed']} ✅ / {r['missed']} ❌"
+        if r.get("pending"):
+            row += f" / {r['pending']} 🕒"
+        lines.append(row)
 
     return "\n".join(lines)
 
