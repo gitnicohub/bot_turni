@@ -313,34 +313,36 @@ class DatabaseManager:
 
     @staticmethod
     async def reschedule_shift(shift_id: int, new_date: date) -> bool:
-        """Sposta un turno fallito a un altro giorno della stessa settimana (una sola volta).
+        """Sposta un turno non completato a un giorno successivo della stessa settimana.
 
-        Resetta `notified` così la verifica serale scatterà di nuovo nel nuovo
-        giorno. Restituisce False se il turno non esiste più o se l'occasione
-        di spostamento era già stata usata (o consumata con "Non spostare").
-        """
-        query = """
-        UPDATE shifts
-        SET scheduled_date = ?, notified = 0, reschedule_used = 1
-        WHERE id = ? AND reschedule_used = 0;
+        Nessun limite al numero di spostamenti: ogni volta il turno può
+        avanzare fino a domenica, mai oltre la propria settimana (lun-dom),
+        quindi le settimane successive non vengono toccate. Resetta `notified`
+        così la verifica serale scatterà di nuovo nel nuovo giorno. Restituisce
+        False se il turno non esiste, è già completato, la data non è
+        successiva a quella attuale / è in un'altra settimana, o il giorno è
+        già occupato dallo stesso task.
         """
         async with aiosqlite.connect(DATABASE_PATH) as db:
+            async with db.execute(
+                "SELECT scheduled_date, is_completed FROM shifts WHERE id = ?;", (shift_id,)
+            ) as cursor:
+                row = await cursor.fetchone()
+            if not row or row[1]:
+                return False
+
+            current = date.fromisoformat(row[0])
+            sunday = current + timedelta(days=6 - current.weekday())
+            if not (current < new_date <= sunday):
+                return False
+
             try:
-                cursor = await db.execute(query, (new_date.isoformat(), shift_id))
+                cursor = await db.execute(
+                    "UPDATE shifts SET scheduled_date = ?, notified = 0 WHERE id = ?;",
+                    (new_date.isoformat(), shift_id),
+                )
             except aiosqlite.IntegrityError:
                 return False
-            await db.commit()
-            return cursor.rowcount > 0
-
-    @staticmethod
-    async def mark_reschedule_declined(shift_id: int) -> bool:
-        """Consuma l'occasione di spostamento senza cambiare data ("Non spostare")."""
-        query = """
-        UPDATE shifts SET reschedule_used = 1
-        WHERE id = ? AND reschedule_used = 0;
-        """
-        async with aiosqlite.connect(DATABASE_PATH) as db:
-            cursor = await db.execute(query, (shift_id,))
             await db.commit()
             return cursor.rowcount > 0
 

@@ -132,15 +132,14 @@ async def verify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             "Nessun audio punitivo trovato in %s: nessun vocale inviato.", PUNISHMENT_IMAGES_DIR
         )
 
-    if not shift["reschedule_used"]:
-        scheduled_date = datetime.strptime(shift["scheduled_date"], "%Y-%m-%d").date()
-        keyboard = _build_reschedule_keyboard(shift_id, scheduled_date)
-        if keyboard:
-            await context.bot.send_message(
-                chat_id=user.id,
-                text="🔁 Vuoi spostare questo turno a un altro giorno della settimana?",
-                reply_markup=keyboard,
-            )
+    scheduled_date = datetime.strptime(shift["scheduled_date"], "%Y-%m-%d").date()
+    keyboard = _build_reschedule_keyboard(shift_id, scheduled_date)
+    if keyboard:
+        await context.bot.send_message(
+            chat_id=user.id,
+            text="🔁 Vuoi spostare questo turno a un altro giorno della settimana?",
+            reply_markup=keyboard,
+        )
 
 async def reschedule_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Gestisce la scelta del giorno in cui spostare un turno fallito (o il rifiuto)."""
@@ -158,19 +157,14 @@ async def reschedule_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         await query.edit_message_text("⚠️ Questo turno non ti risulta assegnato o non esiste più.")
         return
 
-    if shift["reschedule_used"]:
-        await query.edit_message_text("⚠️ Avevi già deciso cosa fare di questo turno.")
-        return
-
     if choice == "skip":
-        await DatabaseManager.mark_reschedule_declined(shift_id)
         await query.edit_message_text("👍 Ok, il turno resta dov'era.")
         return
 
     new_date = datetime.strptime(choice, "%Y-%m-%d").date()
     success = await DatabaseManager.reschedule_shift(shift_id, new_date)
     if not success:
-        await query.edit_message_text("⚠️ Impossibile spostare il turno (forse era già stato deciso). Riprova più tardi.")
+        await query.edit_message_text("⚠️ Impossibile spostare il turno (già completato, già spostato o data non valida).")
         return
 
     weekday_label = WEEKDAY_LABELS[new_date.weekday()]
