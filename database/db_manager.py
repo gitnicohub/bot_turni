@@ -1,62 +1,8 @@
 import aiosqlite
-import random
 from datetime import date, datetime, timedelta
 from typing import List, Optional, Dict, Any
 from config import DATABASE_PATH
-
-
-MAX_SHUFFLE_ATTEMPTS = 20
-
-
-def compute_week_assignments(
-    monday: date,
-    task_ids: List[int],
-    user_ids: List[int],
-    all_task_ids: Optional[List[int]] = None,
-    previous_assignments: Optional[Dict[int, int]] = None,
-) -> List[tuple]:
-    """Assegna a caso i turni della settimana tra i coinquilini.
-
-    I coinquilini vengono rimescolati (shuffle) e abbinati 1:1 ai turni,
-    così l'assegnazione cambia ogni settimana e nessuno si ritrova sempre
-    con lo stesso turno. Il turno di un task è programmato su monday + il
-    suo indice nell'ordine fisso delle mansioni (Lun..Ven per 5 turni).
-
-    `task_ids` può essere un sottoinsieme (es. solo i task ancora privi di
-    turno in settimana): `all_task_ids`, l'elenco completo ordinato, serve
-    in quel caso per calcolare comunque il giorno corretto di ciascun task
-    tramite il suo indice originale, invece di quello nella lista filtrata.
-
-    `previous_assignments` (task_id -> user_id della settimana precedente),
-    se fornito, fa ritentare lo shuffle fino a MAX_SHUFFLE_ATTEMPTS volte
-    per evitare che un task ricapiti alla stessa persona due settimane di
-    fila. Con pochi coinquilini/task non è sempre possibile evitarlo del
-    tutto: è un tentativo best-effort, non una garanzia.
-    """
-    order_reference = all_task_ids if all_task_ids is not None else task_ids
-    day_offset = {tid: i for i, tid in enumerate(order_reference)}
-    previous_assignments = previous_assignments or {}
-    n = len(user_ids)
-
-    candidate = None
-    for _ in range(MAX_SHUFFLE_ATTEMPTS):
-        shuffled_users = user_ids.copy()
-        random.shuffle(shuffled_users)
-        candidate = {
-            task_id: shuffled_users[i % n] for i, task_id in enumerate(task_ids)
-        }
-        has_repeat = any(
-            previous_assignments.get(task_id) == user_id
-            for task_id, user_id in candidate.items()
-        )
-        if not has_repeat:
-            break
-
-    assignments = []
-    for task_id in task_ids:
-        scheduled_date = monday + timedelta(days=day_offset[task_id])
-        assignments.append((task_id, candidate[task_id], scheduled_date))
-    return assignments
+from database.assignment import compute_week_assignments
 
 
 class DatabaseManager:
@@ -120,17 +66,26 @@ class DatabaseManager:
 
     @staticmethod
     async def get_task_assignments_for_week(monday: date) -> Dict[int, int]:
-        """Mappa task_id -> user_id assegnato nella settimana che inizia a `monday`.
-
-        Usata da ensure_week_shifts per evitare che un task ricapiti alla
-        stessa persona due settimane di fila (vedi compute_week_assignments).
-        """
+        """Mappa task_id -> user_id assegnato nella settimana che inizia a `monday`."""
         sunday = monday + timedelta(days=6)
         query = "SELECT task_id, user_id FROM shifts WHERE scheduled_date BETWEEN ? AND ?;"
         async with aiosqlite.connect(DATABASE_PATH) as db:
             async with db.execute(query, (monday.isoformat(), sunday.isoformat())) as cursor:
                 rows = await cursor.fetchall()
                 return {row[0]: row[1] for row in rows}
+
+    @staticmethod
+    async def get_assignment_history(before: date) -> List[tuple]:
+        """Tutti i turni precedenti a `before` come (task_id, user_id, scheduled_date).
+
+        Usata da ensure_week_shifts: la nuova assegnazione guarda l'intero
+        storico, non solo la settimana scorsa (vedi compute_week_assignments).
+        """
+        query = "SELECT task_id, user_id, scheduled_date FROM shifts WHERE scheduled_date < ?;"
+        async with aiosqlite.connect(DATABASE_PATH) as db:
+            async with db.execute(query, (before.isoformat(),)) as cursor:
+                rows = await cursor.fetchall()
+                return [(r[0], r[1], date.fromisoformat(r[2])) for r in rows]
 
     @staticmethod
     async def ensure_week_shifts(monday: date) -> None:
@@ -163,15 +118,15 @@ class DatabaseManager:
             if not pending_task_ids:
                 return
 
-            previous_assignments = await DatabaseManager.get_task_assignments_for_week(
-                monday - timedelta(days=7)
-            )
+            history = await DatabaseManager.get_assignment_history(monday)
+            already_assigned = await DatabaseManager.get_task_assignments_for_week(monday)
             assignments = compute_week_assignments(
                 monday,
                 pending_task_ids,
                 user_ids,
                 all_task_ids=task_ids,
-                previous_assignments=previous_assignments,
+                history=history,
+                already_assigned=already_assigned,
             )
             for task_id, user_id, scheduled_date in assignments:
                 await db.execute(
