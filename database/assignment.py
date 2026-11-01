@@ -25,12 +25,17 @@ def _build_cost(
     user_ids: List[int],
     history: Iterable[HistoryRow],
     already_assigned: Dict[int, int],
+    group_of: Dict[int, int],
 ):
     """Costruisce cost(user, task) a partire dallo storico.
 
     Costo base: quante volte l'utente ha già fatto quel compito (al quadrato
     marginale, 2c+1), così il carico di ogni compito si distribuisce
     equamente tra tutti nel lungo periodo invece di accumularsi su qualcuno.
+
+    Le penalità di vicinanza (settimana scorsa / due settimane fa) valgono per
+    l'intero gruppo di compiti "gemelli" (`group_of`, es. cucina e
+    infrasettimanale): chi ha fatto uno dei due non deve fare nessuno dei due.
     """
     counts: Dict[Tuple[int, int], int] = {}
     last_week_pairs = set()
@@ -39,11 +44,12 @@ def _build_cost(
         if scheduled >= monday:
             continue  # solo il passato rispetto alla settimana da generare
         counts[(user_id, task_id)] = counts.get((user_id, task_id), 0) + 1
+        group = group_of.get(task_id, task_id)
         weeks_ago = (monday - _monday_of(scheduled)).days // 7
         if weeks_ago == 1:
-            last_week_pairs.add((user_id, task_id))
+            last_week_pairs.add((user_id, group))
         elif weeks_ago == 2:
-            two_weeks_ago_pairs.add((user_id, task_id))
+            two_weeks_ago_pairs.add((user_id, group))
 
     busy_users: Dict[int, int] = {}
     for user_id in already_assigned.values():
@@ -51,9 +57,10 @@ def _build_cost(
 
     def cost(user_id: int, task_id: int) -> int:
         value = 2 * counts.get((user_id, task_id), 0) + 1
-        if (user_id, task_id) in last_week_pairs:
+        group = group_of.get(task_id, task_id)
+        if (user_id, group) in last_week_pairs:
             value += REPEAT_LAST_WEEK_PENALTY
-        if (user_id, task_id) in two_weeks_ago_pairs:
+        if (user_id, group) in two_weeks_ago_pairs:
             value += REPEAT_TWO_WEEKS_AGO_PENALTY
         value += EXTRA_TASK_IN_WEEK_PENALTY * busy_users.get(user_id, 0)
         return value
@@ -136,6 +143,7 @@ def compute_week_assignments(
     all_task_ids: Optional[List[int]] = None,
     history: Optional[Iterable[HistoryRow]] = None,
     already_assigned: Optional[Dict[int, int]] = None,
+    task_groups: Optional[Iterable[Iterable[int]]] = None,
     rng: Optional[random.Random] = None,
 ) -> List[tuple]:
     """Assegna i turni della settimana che inizia a `monday` tenendo conto dello storico.
@@ -151,6 +159,9 @@ def compute_week_assignments(
     settimana (quando `task_ids` è solo un sottoinsieme da completare).
     `all_task_ids`: elenco completo ordinato dei compiti, per calcolare il
     giorno di ciascuno (monday + indice) anche se `task_ids` è filtrato.
+    `task_groups`: insiemi di compiti "gemelli" (es. {cucina, infrasettimanale}):
+    chi ha fatto uno di un gruppo la settimana scorsa non deve fare nessuno
+    del gruppo questa settimana.
     Restituisce una lista di (task_id, user_id, scheduled_date).
     """
     if not task_ids or not user_ids:
@@ -160,7 +171,12 @@ def compute_week_assignments(
     order_reference = all_task_ids if all_task_ids is not None else task_ids
     day_offset = {tid: i for i, tid in enumerate(order_reference)}
 
-    cost = _build_cost(monday, task_ids, user_ids, history or [], already_assigned or {})
+    group_of = {
+        task_id: min(group)
+        for group in (list(g) for g in (task_groups or []))
+        for task_id in group
+    }
+    cost = _build_cost(monday, task_ids, user_ids, history or [], already_assigned or {}, group_of)
     chosen = _pick_assignment(list(task_ids), list(user_ids), cost, rng)
 
     return [

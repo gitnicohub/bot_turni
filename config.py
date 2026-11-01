@@ -36,6 +36,12 @@ ROOMMATES = [
     os.getenv("QUINTO_COINQUILINO", "Quinto Coinquilino (da definire)"),
 ]
 
+# Compiti "gemelli" (per nome): chi ne ha fatto uno la settimana prima non deve
+# farne nessuno dello stesso gruppo la settimana dopo (vedi database/assignment.py)
+TASK_GROUPS = [
+    ("cucina", "infrasettimanale"),
+]
+
 # Cartella da cui viene pescata a caso l'immagine "punitiva" inviata insieme
 # all'insulto goliardico quando un turno viene segnato come Non completato.
 # Basta copiare i file immagine (.jpg, .jpeg, .png, .gif, .webp) in questa cartella.

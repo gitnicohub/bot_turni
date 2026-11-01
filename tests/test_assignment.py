@@ -16,7 +16,7 @@ TASKS = [1, 2, 3, 4, 5]
 USERS = [1, 2, 3, 4, 5]
 
 
-def simulate(weeks, tasks=TASKS, users=USERS, seed=0, history=None):
+def simulate(weeks, tasks=TASKS, users=USERS, seed=0, history=None, task_groups=None):
     """Genera `weeks` settimane consecutive e restituisce lo storico completo."""
     rng = random.Random(seed)
     history = list(history or [])
@@ -24,7 +24,7 @@ def simulate(weeks, tasks=TASKS, users=USERS, seed=0, history=None):
     for w in range(weeks):
         monday = first + timedelta(days=7 * w)
         for task_id, user_id, d in compute_week_assignments(
-            monday, tasks, users, history=history, rng=rng
+            monday, tasks, users, history=history, task_groups=task_groups, rng=rng
         ):
             history.append((task_id, user_id, d))
     return history
@@ -192,3 +192,69 @@ def test_ensure_week_shifts_is_idempotent_and_keeps_moved_shift(db):
 
     before, after = asyncio.run(go())
     assert len(after) == len(before) == 5
+
+
+KITCHEN = [[3, 5]]  # cucina e infrasettimanale
+
+
+@pytest.mark.parametrize("seed", range(20))
+def test_kitchen_group_never_two_weeks_in_a_row(seed):
+    weeks = by_week(simulate(60, seed=seed, task_groups=KITCHEN))
+    for prev, cur in zip(weeks, weeks[1:]):
+        last_kitchen = {prev[3], prev[5]}
+        assert not last_kitchen & {cur[3], cur[5]}, (seed, prev, cur)
+        assert all(prev[t] != cur[t] for t in TASKS)
+
+
+@pytest.mark.parametrize("seed", range(20))
+def test_kitchen_group_keeps_long_run_balanced(seed):
+    history = simulate(50, seed=seed, task_groups=KITCHEN)
+    counts = Counter((u, t) for t, u, _ in history)
+    assert max(counts.values()) - min(counts.values()) <= 2
+    # nessuno viene mai tagliato fuori da un compito
+    assert all(counts[(u, t)] >= 7 for u in USERS for t in TASKS)
+
+
+def test_real_history_kitchen_group_next_week():
+    kitchen_last_week = {u for t, u, d in REAL if t in (3, 5) and d >= date(2026, 10, 26)}
+    assert kitchen_last_week == {5, 1}  # Giovanna (cucina) e Miguel (infrasettimanale)
+    for seed in range(200):
+        result = compute_week_assignments(
+            NEXT_MONDAY, TASKS, USERS, history=REAL, task_groups=KITCHEN, rng=random.Random(seed)
+        )
+        picked = {t: u for t, u, _ in result}
+        assert sorted(picked.values()) == USERS
+        assert not kitchen_last_week & {picked[3], picked[5]}
+        assert all(
+            (u, t) not in {(u2, t2) for t2, u2, d in REAL if d >= date(2026, 10, 26)}
+            for t, u in picked.items()
+        )
+
+
+def test_without_groups_old_behaviour_is_unchanged():
+    """Senza gruppi un utente può passare da cucina a infrasettimanale (compiti distinti)."""
+    history = [(3, 1, date(2026, 10, 26))]  # Miguel ha fatto la cucina
+    outcomes = set()
+    for seed in range(300):
+        result = compute_week_assignments(
+            NEXT_MONDAY, TASKS, USERS, history=history, rng=random.Random(seed)
+        )
+        outcomes.add({t: u for t, u, _ in result}[5])
+    assert 1 in outcomes
+
+
+def test_ensure_week_shifts_applies_kitchen_group_from_config(db):
+    async def go():
+        for w in range(25):
+            await DatabaseManager.ensure_week_shifts(START + timedelta(days=7 * w))
+        shifts = []
+        for w in range(25):
+            shifts.append(await DatabaseManager.get_shifts_for_week(START + timedelta(days=7 * w)))
+        return shifts
+
+    weeks = asyncio.run(go())
+    for prev, cur in zip(weeks, weeks[1:]):
+        prev_kitchen = {s["user_name"] for s in prev if s["task_name"] in ("cucina", "infrasettimanale")}
+        cur_kitchen = {s["user_name"] for s in cur if s["task_name"] in ("cucina", "infrasettimanale")}
+        assert len(prev_kitchen) == len(cur_kitchen) == 2
+        assert not prev_kitchen & cur_kitchen

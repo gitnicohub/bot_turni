@@ -1,7 +1,7 @@
 import aiosqlite
 from datetime import date, datetime, timedelta
 from typing import List, Optional, Dict, Any
-from config import DATABASE_PATH
+from config import DATABASE_PATH, TASK_GROUPS
 from database.assignment import compute_week_assignments
 
 
@@ -120,6 +120,11 @@ class DatabaseManager:
 
             history = await DatabaseManager.get_assignment_history(monday)
             already_assigned = await DatabaseManager.get_task_assignments_for_week(monday)
+            id_by_name = {t["name"]: t["id"] for t in tasks}
+            task_groups = [
+                [id_by_name[name] for name in group if name in id_by_name]
+                for group in TASK_GROUPS
+            ]
             assignments = compute_week_assignments(
                 monday,
                 pending_task_ids,
@@ -127,6 +132,7 @@ class DatabaseManager:
                 all_task_ids=task_ids,
                 history=history,
                 already_assigned=already_assigned,
+                task_groups=task_groups,
             )
             for task_id, user_id, scheduled_date in assignments:
                 await db.execute(
