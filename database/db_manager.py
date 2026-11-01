@@ -312,16 +312,16 @@ class DatabaseManager:
                 return dict(row) if row else None
 
     @staticmethod
-    async def reschedule_shift(shift_id: int, new_date: date) -> bool:
-        """Sposta un turno non completato a un giorno successivo della stessa settimana.
+    async def reschedule_shift(shift_id: int, new_date: date, today: date) -> bool:
+        """Sposta un turno non completato a un altro giorno della stessa settimana.
 
-        Nessun limite al numero di spostamenti: ogni volta il turno può
-        avanzare fino a domenica, mai oltre la propria settimana (lun-dom),
-        quindi le settimane successive non vengono toccate. Resetta `notified`
-        così la verifica serale scatterà di nuovo nel nuovo giorno. Restituisce
-        False se il turno non esiste, è già completato, la data non è
-        successiva a quella attuale / è in un'altra settimana, o il giorno è
-        già occupato dallo stesso task.
+        Nessun limite al numero di spostamenti. La nuova data deve cadere
+        nella stessa settimana (lun-dom) del turno, non nel passato (`today`)
+        e diversa da quella attuale: le settimane successive non vengono mai
+        toccate. Resetta `notified` così la verifica serale scatterà di nuovo
+        nel nuovo giorno. Restituisce False se il turno non esiste, è già
+        completato, la data non è valida o il giorno è già occupato dallo
+        stesso task.
         """
         async with aiosqlite.connect(DATABASE_PATH) as db:
             async with db.execute(
@@ -332,8 +332,9 @@ class DatabaseManager:
                 return False
 
             current = date.fromisoformat(row[0])
-            sunday = current + timedelta(days=6 - current.weekday())
-            if not (current < new_date <= sunday):
+            monday = current - timedelta(days=current.weekday())
+            sunday = monday + timedelta(days=6)
+            if new_date == current or not (max(monday, today) <= new_date <= sunday):
                 return False
 
             try:

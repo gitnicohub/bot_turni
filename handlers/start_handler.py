@@ -51,6 +51,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "• `/turni`: Visualizza il calendario settimanale dei turni con link Google Calendar.\n"
         "• `/fatto`: Segna come completato il turno assegnato a te questa settimana (il bot lo capisce da solo).\n"
         "• `/annulla`: Annulla un `/fatto` (o ✅) premuto per errore sul tuo turno di questa settimana.\n"
+        "• `/sposta`: Sposta il tuo turno non ancora fatto a un altro giorno di questa settimana (anche più volte).\n"
         "• `/report`: Resoconto della settimana scorsa con la classifica generale.\n"
         "• Ogni sera alle 23:00 riceverai un promemoria con bottoni ✅/❌ per confermare il turno del giorno.\n"
         "• Ogni lunedì alle 9:00 arriva il resoconto della settimana appena conclusa con la classifica generale.\n"

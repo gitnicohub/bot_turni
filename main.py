@@ -11,6 +11,7 @@ from handlers import (
     mark_done_command,
     undo_done_command,
     report_command,
+    reschedule_command,
     claim_callback,
     verify_callback,
     reschedule_callback,
@@ -35,6 +36,7 @@ BOT_COMMANDS = [
     BotCommand("turni", "Calendario turni della settimana"),
     BotCommand("fatto", "Segna il tuo turno come completato"),
     BotCommand("annulla", "Annulla un /fatto premuto per errore"),
+    BotCommand("sposta", "Sposta il tuo turno a un altro giorno della settimana"),
     BotCommand("report", "Resoconto della settimana scorsa e classifica"),
 ]
 
@@ -84,6 +86,7 @@ def main() -> None:
     application.add_handler(CommandHandler("turni", list_shifts_command))
     application.add_handler(CommandHandler("fatto", mark_done_command))
     application.add_handler(CommandHandler("annulla", undo_done_command))
+    application.add_handler(CommandHandler("sposta", reschedule_command))
     application.add_handler(CommandHandler("report", report_command))
     application.add_handler(CallbackQueryHandler(claim_callback, pattern=r"^claim:"))
     application.add_handler(CallbackQueryHandler(verify_callback, pattern=r"^verify:"))

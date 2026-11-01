@@ -1,10 +1,11 @@
 import logging
 import random
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
+import pytz
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
-from config import PUNISHMENT_IMAGES_DIR
+from config import PUNISHMENT_IMAGES_DIR, TIMEZONE
 from database.db_manager import DatabaseManager
 from utils.helpers import (
     PUNISHMENT_INSULTS,
@@ -17,18 +18,24 @@ from utils.helpers import (
 
 logger = logging.getLogger(__name__)
 
-def _build_reschedule_keyboard(shift_id: int, scheduled_date):
-    """Bottoni per spostare il turno a un giorno successivo della stessa settimana.
+def _today() -> date:
+    return datetime.now(pytz.timezone(TIMEZONE)).date()
 
-    Restituisce None se il turno fallito è già di domenica (nessun giorno
-    successivo disponibile nella settimana).
+def build_reschedule_keyboard(shift_id: int, scheduled_date: date, today: date):
+    """Bottoni per spostare il turno a un altro giorno della sua settimana.
+
+    Offre i giorni da `today` (o dal lunedì, se il turno è di una settimana
+    già iniziata) fino a domenica, escluso quello attuale del turno.
+    Restituisce None se non resta nessun giorno disponibile.
     """
-    sunday = scheduled_date + timedelta(days=6 - scheduled_date.weekday())
-    day = scheduled_date + timedelta(days=1)
+    monday = scheduled_date - timedelta(days=scheduled_date.weekday())
+    day = max(monday, today)
+    sunday = monday + timedelta(days=6)
     buttons = []
     while day <= sunday:
-        label = f"📅 {WEEKDAY_LABELS[day.weekday()]} {day.strftime('%d/%m')}"
-        buttons.append([InlineKeyboardButton(label, callback_data=f"reschedule:{shift_id}:{day.isoformat()}")])
+        if day != scheduled_date:
+            label = f"📅 {WEEKDAY_LABELS[day.weekday()]} {day.strftime('%d/%m')}"
+            buttons.append([InlineKeyboardButton(label, callback_data=f"reschedule:{shift_id}:{day.isoformat()}")])
         day += timedelta(days=1)
 
     if not buttons:
@@ -133,7 +140,7 @@ async def verify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         )
 
     scheduled_date = datetime.strptime(shift["scheduled_date"], "%Y-%m-%d").date()
-    keyboard = _build_reschedule_keyboard(shift_id, scheduled_date)
+    keyboard = build_reschedule_keyboard(shift_id, scheduled_date, _today())
     if keyboard:
         await context.bot.send_message(
             chat_id=user.id,
@@ -162,7 +169,7 @@ async def reschedule_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
 
     new_date = datetime.strptime(choice, "%Y-%m-%d").date()
-    success = await DatabaseManager.reschedule_shift(shift_id, new_date)
+    success = await DatabaseManager.reschedule_shift(shift_id, new_date, _today())
     if not success:
         await query.edit_message_text("⚠️ Impossibile spostare il turno (già completato, già spostato o data non valida).")
         return

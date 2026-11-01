@@ -6,7 +6,8 @@ from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
 from config import TIMEZONE
 from database.db_manager import DatabaseManager
-from utils.helpers import format_weekly_calendar, build_google_calendar_link
+from utils.helpers import format_weekly_calendar, build_google_calendar_link, WEEKDAY_LABELS
+from handlers.callback_handler import build_reschedule_keyboard
 from scheduler.scheduler_jobs import build_previous_week_report
 
 logger = logging.getLogger(__name__)
@@ -129,3 +130,44 @@ async def report_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     today = datetime.now(pytz.timezone(TIMEZONE)).date()
     text = await build_previous_week_report(today)
     await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
+
+async def reschedule_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Sposta il proprio turno non ancora completato a un altro giorno della settimana (/sposta)."""
+    user = update.effective_user
+    if not user:
+        return
+
+    registered = await DatabaseManager.get_user_by_telegram_id(user.id)
+    if not registered:
+        await update.message.reply_text(
+            "⚠️ Non risulti ancora registrato. Usa /start per selezionare il tuo nome tra i coinquilini."
+        )
+        return
+
+    today = datetime.now(pytz.timezone(TIMEZONE)).date()
+    monday = _current_monday()
+    await DatabaseManager.ensure_week_shifts(monday)
+    shifts = await DatabaseManager.get_shifts_for_week(monday)
+    open_shifts = [s for s in shifts if s["telegram_id"] == user.id and not s["is_completed"]]
+
+    if not open_shifts:
+        await update.message.reply_text(
+            "🧹 Non hai turni da spostare questa settimana (nessun turno o già completato)."
+        )
+        return
+
+    for s in open_shifts:
+        scheduled = datetime.strptime(s["scheduled_date"], "%Y-%m-%d").date()
+        keyboard = build_reschedule_keyboard(s["shift_id"], scheduled, today)
+        if not keyboard:
+            await update.message.reply_text(
+                f"ℹ️ Il turno *{s['task_name']}* non si può spostare: non restano altri giorni disponibili questa settimana.",
+                parse_mode=ParseMode.MARKDOWN,
+            )
+            continue
+        await update.message.reply_text(
+            f"🔁 Il tuo turno *{s['task_name']}* è previsto per *{WEEKDAY_LABELS[scheduled.weekday()]} {scheduled.strftime('%d/%m')}*.\n"
+            "A che giorno della settimana vuoi spostarlo?",
+            reply_markup=keyboard,
+            parse_mode=ParseMode.MARKDOWN,
+        )
