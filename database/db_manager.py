@@ -390,11 +390,60 @@ class DatabaseManager:
             return cursor.rowcount > 0
 
     @staticmethod
+    async def get_missed_shifts_for_user(telegram_id: int, today: date) -> List[Dict[str, Any]]:
+        """Turni scaduti e non completati dell'utente, dal più vecchio (recuperabili con /recupera).
+
+        Come in get_all_time_stats, un turno è "mancato" solo dal lunedì
+        successivo alla sua settimana.
+        """
+        current_monday = today - timedelta(days=today.weekday())
+        query = """
+        SELECT
+            s.id AS shift_id,
+            t.name AS task_name,
+            u.name AS user_name,
+            s.scheduled_date
+        FROM shifts s
+        JOIN cleaning_tasks t ON s.task_id = t.id
+        JOIN users u ON s.user_id = u.id
+        WHERE u.telegram_id = ?
+          AND s.is_completed = 0
+          AND s.scheduled_date < ?
+        ORDER BY s.scheduled_date ASC;
+        """
+        async with aiosqlite.connect(DATABASE_PATH) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(query, (telegram_id, current_monday.isoformat())) as cursor:
+                rows = await cursor.fetchall()
+                return [dict(row) for row in rows]
+
+    @staticmethod
+    async def recover_shift(shift_id: int, telegram_id: int, today: date) -> bool:
+        """Segna come fatto (recuperato) un turno scaduto e non completato dell'utente.
+
+        Rifiuta i turni della settimana corrente o futuri (per quelli c'è
+        /fatto), quelli già completati e quelli di altri utenti.
+        """
+        current_monday = today - timedelta(days=today.weekday())
+        query = """
+        UPDATE shifts
+        SET is_completed = 1, completed_at = CURRENT_TIMESTAMP, recovered = 1
+        WHERE id = ?
+          AND is_completed = 0
+          AND scheduled_date < ?
+          AND user_id = (SELECT id FROM users WHERE telegram_id = ?);
+        """
+        async with aiosqlite.connect(DATABASE_PATH) as db:
+            cursor = await db.execute(query, (shift_id, current_monday.isoformat(), telegram_id))
+            await db.commit()
+            return cursor.rowcount > 0
+
+    @staticmethod
     async def mark_shift_uncompleted(shift_id: int, telegram_id: int) -> bool:
         """Annulla il completamento di un turno (/annulla), solo se appartiene all'utente (via telegram_id)."""
         query = """
         UPDATE shifts
-        SET is_completed = 0, completed_at = NULL
+        SET is_completed = 0, completed_at = NULL, recovered = 0
         WHERE id = ?
           AND is_completed = 1
           AND user_id = (SELECT id FROM users WHERE telegram_id = ?);

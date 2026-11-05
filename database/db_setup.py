@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS shifts (
     completed_at TIMESTAMP,
     notified INTEGER DEFAULT 0,
     reschedule_used INTEGER DEFAULT 0,
+    recovered INTEGER DEFAULT 0,
     FOREIGN KEY (task_id) REFERENCES cleaning_tasks (id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
     UNIQUE (task_id, scheduled_date)
@@ -88,6 +89,7 @@ async def init_db():
 
         # Migrazione: DB creati prima dell'introduzione dello spostamento turni
         await _ensure_column(db, "shifts", "reschedule_used", "reschedule_used INTEGER DEFAULT 0")
+        await _ensure_column(db, "shifts", "recovered", "recovered INTEGER DEFAULT 0")
 
         # Popolamento iniziale mansioni predefinite
         for name, desc in DEFAULT_TASKS:

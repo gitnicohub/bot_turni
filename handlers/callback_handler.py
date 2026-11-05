@@ -44,6 +44,16 @@ def build_reschedule_keyboard(shift_id: int, scheduled_date: date, today: date):
     buttons.append([InlineKeyboardButton("🙅 Non spostare", callback_data=f"reschedule:{shift_id}:skip")])
     return InlineKeyboardMarkup(buttons)
 
+def build_recover_keyboard(missed_shifts):
+    """Un bottone per ogni turno passato non completato, più "Annulla"."""
+    buttons = []
+    for s in missed_shifts:
+        day = datetime.strptime(s["scheduled_date"], "%Y-%m-%d").date()
+        label = f"♻️ {s['task_name']} - {WEEKDAY_LABELS[day.weekday()]} {day.strftime('%d/%m')}"
+        buttons.append([InlineKeyboardButton(label, callback_data=f"recover:{s['shift_id']}")])
+    buttons.append([InlineKeyboardButton("🙅 Annulla", callback_data="recover:skip")])
+    return InlineKeyboardMarkup(buttons)
+
 async def claim_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Gestisce il click su un nome nella tastiera di /start: associa telegram_id al nome."""
     query = update.callback_query
@@ -202,3 +212,38 @@ async def reschedule_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
             await DatabaseManager.set_last_calendar_message(r["telegram_id"], sent.message_id)
         except Exception as e:
             logger.warning("Impossibile inviare il calendario aggiornato a %s: %s", r["telegram_id"], e)
+
+async def recover_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Gestisce la scelta del turno passato da recuperare e avvisa tutti i coinquilini."""
+    query = update.callback_query
+    await query.answer()
+    user = update.effective_user
+    if not user:
+        return
+
+    choice = query.data.split(":")[1]
+    if choice == "skip":
+        await query.edit_message_text("👍 Ok, nessun turno recuperato.")
+        return
+
+    shift = await DatabaseManager.get_shift(int(choice))
+    success = bool(shift) and await DatabaseManager.recover_shift(shift["shift_id"], user.id, _today())
+    if not success:
+        await query.edit_message_text("⚠️ Impossibile recuperare il turno (già completato, non tuo o non ancora scaduto).")
+        return
+
+    day = datetime.strptime(shift["scheduled_date"], "%Y-%m-%d").date()
+    logger.info("Turno %d (%s del %s) recuperato da %s", shift["shift_id"], shift["task_name"], day, shift["user_name"])
+    await query.edit_message_text(
+        f"✅ Turno *{shift['task_name']}* del *{day.strftime('%d/%m/%Y')}* recuperato, bravo/a *{shift['user_name']}*!",
+        parse_mode=ParseMode.MARKDOWN
+    )
+
+    text = f"♻️ *{shift['user_name']}* ha recuperato il turno *{shift['task_name']}* del *{day.strftime('%d/%m/%Y')}*."
+    for r in await DatabaseManager.get_roommates():
+        if not r["telegram_id"]:
+            continue
+        try:
+            await context.bot.send_message(chat_id=r["telegram_id"], text=text, parse_mode=ParseMode.MARKDOWN)
+        except Exception as e:
+            logger.warning("Impossibile inviare l'avviso di recupero a %s: %s", r["telegram_id"], e)

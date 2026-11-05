@@ -7,7 +7,7 @@ from telegram.constants import ParseMode
 from config import TIMEZONE
 from database.db_manager import DatabaseManager
 from utils.helpers import format_weekly_calendar, build_google_calendar_link, WEEKDAY_LABELS
-from handlers.callback_handler import build_reschedule_keyboard
+from handlers.callback_handler import build_reschedule_keyboard, build_recover_keyboard
 from scheduler.scheduler_jobs import build_previous_week_report
 
 logger = logging.getLogger(__name__)
@@ -171,3 +171,27 @@ async def reschedule_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
             reply_markup=keyboard,
             parse_mode=ParseMode.MARKDOWN,
         )
+
+async def recover_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Mostra i propri turni passati non completati e permette di recuperarli (/recupera)."""
+    user = update.effective_user
+    if not user:
+        return
+
+    registered = await DatabaseManager.get_user_by_telegram_id(user.id)
+    if not registered:
+        await update.message.reply_text(
+            "⚠️ Non risulti ancora registrato. Usa /start per selezionare il tuo nome tra i coinquilini."
+        )
+        return
+
+    today = datetime.now(pytz.timezone(TIMEZONE)).date()
+    missed = await DatabaseManager.get_missed_shifts_for_user(user.id, today)
+    if not missed:
+        await update.message.reply_text("🎉 Non hai turni passati da recuperare: sei in regola!")
+        return
+
+    await update.message.reply_text(
+        "♻️ Quale turno passato vuoi recuperare?",
+        reply_markup=build_recover_keyboard(missed),
+    )

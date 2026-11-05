@@ -12,9 +12,11 @@ from handlers import (
     undo_done_command,
     report_command,
     reschedule_command,
+    recover_command,
     claim_callback,
     verify_callback,
     reschedule_callback,
+    recover_callback,
     audit_update,
     log_command,
 )
@@ -37,6 +39,7 @@ BOT_COMMANDS = [
     BotCommand("fatto", "Segna il tuo turno come completato"),
     BotCommand("annulla", "Annulla un /fatto premuto per errore"),
     BotCommand("sposta", "Sposta il tuo turno a un altro giorno della settimana"),
+    BotCommand("recupera", "Recupera un turno passato non completato"),
     BotCommand("report", "Resoconto della settimana scorsa e classifica"),
 ]
 
@@ -87,10 +90,12 @@ def main() -> None:
     application.add_handler(CommandHandler("fatto", mark_done_command))
     application.add_handler(CommandHandler("annulla", undo_done_command))
     application.add_handler(CommandHandler("sposta", reschedule_command))
+    application.add_handler(CommandHandler("recupera", recover_command))
     application.add_handler(CommandHandler("report", report_command))
     application.add_handler(CallbackQueryHandler(claim_callback, pattern=r"^claim:"))
     application.add_handler(CallbackQueryHandler(verify_callback, pattern=r"^verify:"))
     application.add_handler(CallbackQueryHandler(reschedule_callback, pattern=r"^reschedule:"))
+    application.add_handler(CallbackQueryHandler(recover_callback, pattern=r"^recover:"))
 
     # /log: solo l'admin, solo in chat privata. Per chiunque altro nessun handler
     # corrisponde e il bot non risponde, come se il comando non esistesse.
