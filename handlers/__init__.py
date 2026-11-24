@@ -1,7 +1,7 @@
 """Package contenente gli handler dei comandi Telegram."""
 from .start_handler import start_command, help_command
-from .shifts_handler import list_shifts_command, mark_done_command, undo_done_command, report_command, reschedule_command, recover_command
-from .callback_handler import claim_callback, verify_callback, reschedule_callback, recover_callback
+from .shifts_handler import list_shifts_command, mark_done_command, trash_done_command, undo_done_command, report_command, reschedule_command, recover_command
+from .callback_handler import claim_callback, verify_callback, trash_callback, reschedule_callback, recover_callback
 from .audit_handler import audit_update, log_command
 
 __all__ = [
@@ -11,6 +11,8 @@ __all__ = [
     "help_command",
     "list_shifts_command",
     "mark_done_command",
+    "trash_done_command",
+    "trash_callback",
     "undo_done_command",
     "report_command",
     "reschedule_command",

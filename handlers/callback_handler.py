@@ -170,6 +170,36 @@ async def verify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             reply_markup=keyboard,
         )
 
+async def trash_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Gestisce ✅/❌ sul promemoria della domenica per la lista Kosettine settimanine."""
+    query = update.callback_query
+    await query.answer()
+    user = update.effective_user
+    if not user:
+        return
+
+    _, assignment_id_str, outcome = query.data.split(":")
+    item = await DatabaseManager.get_trash_assignment(int(assignment_id_str))
+    if not item or item["telegram_id"] != user.id:
+        await query.edit_message_text("⚠️ Questo compito non ti risulta assegnato o non esiste più.")
+        return
+
+    if outcome == "done":
+        if await DatabaseManager.complete_trash(item["assignment_id"], user.id):
+            await query.edit_message_text(
+                f"✅ Ottimo lavoro *{item['user_name']}*! *{item['chore_name']}* segnato come fatto.",
+                parse_mode=ParseMode.MARKDOWN,
+            )
+        else:
+            await query.edit_message_text("⚠️ Questo compito risultava già segnato come fatto.")
+        return
+
+    await query.edit_message_text(
+        f"😤 *{item['user_name']}*, *{item['chore_name']}* non è stato fatto: finisce tra i mancati. "
+        "Se lo fai in tempo usa `/fattoimmondizia`.",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+
 async def reschedule_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Gestisce la scelta del giorno in cui spostare un turno fallito (o il rifiuto)."""
     query = update.callback_query

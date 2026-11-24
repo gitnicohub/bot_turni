@@ -93,11 +93,53 @@ WEEKDAY_EMOJIS = ["🔥", "🌊", "🌪️", "⚡", "🎉", "🌈", "🌙"]
 SEPARATOR = "━━━━━━━━━━━━━━━"
 
 
-def format_weekly_report(monday: date, week_shifts: List[Dict[str, Any]], ranking: List[Dict[str, Any]]) -> str:
+NUMBER_EMOJIS = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
+TRASH_TITLE = "Kosettine settimanine"
+
+
+def _trash_emoji_by_name() -> Dict[str, str]:
+    from config import TRASH_CHORES
+    return {name: emoji for name, emoji in TRASH_CHORES}
+
+
+def format_trash_list(trash: List[Dict[str, Any]]) -> str:
+    """Formatta la lista Kosettine settimanine: elenco numerato con l'assegnatario di ciascun compito."""
+    if not trash:
+        return f"🗑️ Nessuna lista *{TRASH_TITLE}* generata per questa settimana."
+
+    monday = datetime.strptime(trash[0]["week_start"], "%Y-%m-%d").date()
+    sunday = monday + timedelta(days=6)
+    emojis = _trash_emoji_by_name()
+
+    lines = [
+        f"🗑️✨ *{TRASH_TITLE.upper()}* ✨🗑️",
+        f"_{monday.strftime('%d/%m')} - {sunday.strftime('%d/%m')}_",
+        SEPARATOR,
+    ]
+    for i, t in enumerate(trash):
+        number = NUMBER_EMOJIS[i] if i < len(NUMBER_EMOJIS) else f"{i + 1}."
+        emoji = emojis.get(t["chore_name"], "🗑️")
+        status = "✅ Fatto" if t.get("is_completed") else "🕒 In attesa"
+        lines.append(f"{number} {emoji} {t['chore_name']}")
+        lines.append(f"   ➜ 👤 *{t['user_name']}*  {status}\n")
+
+    lines.append(SEPARATOR)
+    lines.append("💡 Quando hai finito usa `/fattoimmondizia`: domenica alle 23:00 ti chiedo conferma se risulta in attesa.")
+    return "\n".join(lines)
+
+
+def format_weekly_report(
+    monday: date,
+    week_shifts: List[Dict[str, Any]],
+    ranking: List[Dict[str, Any]],
+    trash: Optional[List[Dict[str, Any]]] = None,
+    trash_ranking: Optional[List[Dict[str, Any]]] = None,
+) -> str:
     """Formatta il resoconto della settimana appena conclusa (esito turni + classifica generale).
 
     Stesso stile a blocchi giorno-per-giorno di format_weekly_calendar, per
-    coerenza visiva tra i due messaggi.
+    coerenza visiva tra i due messaggi. `trash` / `trash_ranking` (opzionali)
+    aggiungono esito e classifica della lista Kosettine settimanine.
     """
     sunday = monday + timedelta(days=6)
     lines = [
@@ -127,6 +169,27 @@ def format_weekly_report(monday: date, week_shifts: List[Dict[str, Any]], rankin
         if r.get("pending"):
             row += f" / {r['pending']} 🕒"
         lines.append(row)
+
+    if trash:
+        lines.append("")
+        lines.append(SEPARATOR)
+        lines.append(f"🗑️ *{TRASH_TITLE.upper()}* _(settimana conclusa)_\n")
+        emojis = _trash_emoji_by_name()
+        for i, t in enumerate(trash):
+            number = NUMBER_EMOJIS[i] if i < len(NUMBER_EMOJIS) else f"{i + 1}."
+            status = "✅ Fatto" if t.get("is_completed") else "❌ Non fatto"
+            lines.append(f"{number} {emojis.get(t['chore_name'], '🗑️')} {t['chore_name']}")
+            lines.append(f"   ➜ 👤 *{t['user_name']}*  {status}\n")
+
+    if trash_ranking and any(r["completed"] or r["missed"] or r.get("pending") for r in trash_ranking):
+        lines.append(SEPARATOR)
+        lines.append("🗑️🏆 *CLASSIFICA KOSETTINE* _(fatte ✅ / mancate ❌ / in attesa 🕒)_\n")
+        for i, r in enumerate(trash_ranking):
+            prefix = RANK_MEDALS[i] if i < len(RANK_MEDALS) else f"{i + 1}."
+            row = f"{prefix} *{r['user_name']}* — {r['completed']} ✅ / {r['missed']} ❌"
+            if r.get("pending"):
+                row += f" / {r['pending']} 🕒"
+            lines.append(row)
 
     return "\n".join(lines)
 

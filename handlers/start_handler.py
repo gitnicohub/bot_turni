@@ -50,6 +50,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "• `/start`: Associa il tuo account Telegram al tuo nome tra i coinquilini.\n"
         "• `/turni`: Visualizza il calendario settimanale dei turni con link Google Calendar.\n"
         "• `/fatto`: Segna come completato il turno assegnato a te questa settimana (il bot lo capisce da solo).\n"
+        "• `/fattoimmondizia`: Segna come fatto il tuo compito della lista *Kosettine settimanine* (nessun giorno fisso: domenica alle 23:00 ti chiedo conferma se è ancora in attesa).\n"
         "• `/annulla`: Annulla un `/fatto` (o ✅) premuto per errore sul tuo turno di questa settimana.\n"
         "• `/sposta`: Sposta il tuo turno non ancora fatto a un altro giorno di questa settimana (anche più volte).\n"
         "• `/recupera`: Recupera un turno passato rimasto non completato: viene segnato come fatto e lo sanno tutti.\n"

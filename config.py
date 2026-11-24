@@ -42,6 +42,17 @@ TASK_GROUPS = [
     ("cucina", "infrasettimanale"),
 ]
 
+# "Kosettine settimanine": lista statica di compiti obbligatori, uno per
+# coinquilino ogni settimana, assegnati a rotazione (vedi database/db_manager.py).
+# (testo mostrato nel messaggio, emoji). L'ordine determina la numerazione.
+TRASH_CHORES = [
+    ("Butta il vetro dioporco", "🍾"),
+    ("Butta la plastica diomerda", "🧴"),
+    ("Butta la carta suino", "📰"),
+    ("Butta l'indifferenziata pezzo di merda", "🚮"),
+    ("Butta l'organico ca ste puzz d merd", "🍌"),
+]
+
 # Cartella da cui viene pescata a caso l'immagine "punitiva" inviata insieme
 # all'insulto goliardico quando un turno viene segnato come Non completato.
 # Basta copiare i file immagine (.jpg, .jpeg, .png, .gif, .webp) in questa cartella.

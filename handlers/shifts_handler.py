@@ -6,7 +6,7 @@ from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
 from config import TIMEZONE
 from database.db_manager import DatabaseManager
-from utils.helpers import format_weekly_calendar, build_google_calendar_link, WEEKDAY_LABELS
+from utils.helpers import format_weekly_calendar, format_trash_list, build_google_calendar_link, WEEKDAY_LABELS
 from handlers.callback_handler import build_reschedule_keyboard, build_recover_keyboard, broadcast_shift_done
 from scheduler.scheduler_jobs import build_previous_week_report
 
@@ -24,6 +24,10 @@ async def list_shifts_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     text = format_weekly_calendar(shifts)
     await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
+
+    await DatabaseManager.ensure_week_trash(monday)
+    trash = await DatabaseManager.get_trash_for_week(monday)
+    await update.message.reply_text(format_trash_list(trash), parse_mode=ParseMode.MARKDOWN)
 
     user = update.effective_user
     if not user:
@@ -84,6 +88,45 @@ async def mark_done_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         await broadcast_shift_done(context, registered["name"], shift["task_name"])
     else:
         await update.message.reply_text("⚠️ Impossibile completare il turno. Riprova più tardi.")
+
+async def trash_done_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Segna come fatto il compito della lista Kosettine settimanine assegnato all'utente (/fattoimmondizia)."""
+    user = update.effective_user
+    if not user:
+        return
+
+    registered = await DatabaseManager.get_user_by_telegram_id(user.id)
+    if not registered:
+        await update.message.reply_text(
+            "⚠️ Non risulti ancora registrato. Usa /start per selezionare il tuo nome tra i coinquilini."
+        )
+        return
+
+    monday = _current_monday()
+    await DatabaseManager.ensure_week_trash(monday)
+    trash = await DatabaseManager.get_trash_for_week(monday)
+    mine = [t for t in trash if t["telegram_id"] == user.id]
+
+    if not mine:
+        await update.message.reply_text(
+            f"🗑️ Non risulta nessun compito Kosettine assegnato a *{registered['name']}* questa settimana.",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    done = await DatabaseManager.complete_trash_for_user(user.id, monday)
+    if not done:
+        await update.message.reply_text(
+            f"✅ Il tuo compito Kosettine di questa settimana (*{mine[0]['chore_name']}*) risultava già fatto.",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    logger.info("Kosettine %s completate da %s", done, registered["name"])
+    await update.message.reply_text(
+        f"🗑️✅ Ottimo lavoro *{registered['name']}*! Segnato come fatto: *{', '.join(done)}*.",
+        parse_mode=ParseMode.MARKDOWN,
+    )
 
 async def undo_done_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Annulla un /fatto (o ✅) premuto per errore sul turno di questa settimana (/annulla)."""

@@ -1,6 +1,6 @@
 import aiosqlite
 import logging
-from config import DATABASE_PATH, ROOMMATES
+from config import DATABASE_PATH, ROOMMATES, TRASH_CHORES
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +61,29 @@ CREATE TABLE IF NOT EXISTS audit_log (
 );
 """
 
+CREATE_TRASH_CHORES_TABLE = """
+CREATE TABLE IF NOT EXISTS trash_chores (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE
+);
+"""
+
+# Un compito della lista "Kosettine settimanine" assegnato a un coinquilino
+# per la settimana che inizia a week_start (sempre un lunedì).
+CREATE_TRASH_ASSIGNMENTS_TABLE = """
+CREATE TABLE IF NOT EXISTS trash_assignments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    chore_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    week_start DATE NOT NULL,
+    is_completed INTEGER DEFAULT 0,
+    completed_at TIMESTAMP,
+    FOREIGN KEY (chore_id) REFERENCES trash_chores (id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    UNIQUE (chore_id, week_start)
+);
+"""
+
 DEFAULT_TASKS = [
     ("bagno1", "Pulizia bagno 1: sanitari, doccia e specchio"),
     ("bagno2", "Pulizia bagno 2: sanitari, doccia e specchio"),
@@ -86,6 +109,8 @@ async def init_db():
         await db.execute(CREATE_SHIFTS_TABLE)
         await db.execute(CREATE_CALENDAR_BROADCASTS_TABLE)
         await db.execute(CREATE_AUDIT_LOG_TABLE)
+        await db.execute(CREATE_TRASH_CHORES_TABLE)
+        await db.execute(CREATE_TRASH_ASSIGNMENTS_TABLE)
 
         # Migrazione: DB creati prima dell'introduzione dello spostamento turni
         await _ensure_column(db, "shifts", "reschedule_used", "reschedule_used INTEGER DEFAULT 0")
@@ -97,6 +122,9 @@ async def init_db():
                 "INSERT OR IGNORE INTO cleaning_tasks (name, description) VALUES (?, ?)",
                 (name, desc)
             )
+
+        for name, _emoji in TRASH_CHORES:
+            await db.execute("INSERT OR IGNORE INTO trash_chores (name) VALUES (?)", (name,))
 
         # Popolamento iniziale coinquilini (senza telegram_id: verrà associato via /start)
         for name in ROOMMATES:
