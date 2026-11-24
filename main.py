@@ -13,6 +13,7 @@ from handlers import (
     trash_callback,
     undo_trash_command,
     recover_trash_command,
+    history_command,
     trash_recover_callback,
     undo_done_command,
     report_command,
@@ -48,6 +49,7 @@ BOT_COMMANDS = [
     BotCommand("annulla", "Annulla un /fatto premuto per errore"),
     BotCommand("sposta", "Sposta il tuo turno a un altro giorno della settimana"),
     BotCommand("recupera", "Recupera un turno passato non completato"),
+    BotCommand("storico", "Il tuo storico di turni e Kosettine, fatti e non fatti"),
     BotCommand("report", "Resoconto della settimana scorsa e classifica"),
 ]
 
@@ -102,6 +104,7 @@ def main() -> None:
     application.add_handler(CommandHandler("annulla", undo_done_command))
     application.add_handler(CommandHandler("sposta", reschedule_command))
     application.add_handler(CommandHandler("recupera", recover_command))
+    application.add_handler(CommandHandler("storico", history_command))
     application.add_handler(CommandHandler("report", report_command))
     application.add_handler(CallbackQueryHandler(claim_callback, pattern=r"^claim:"))
     application.add_handler(CallbackQueryHandler(verify_callback, pattern=r"^verify:"))

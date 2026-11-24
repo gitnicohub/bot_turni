@@ -128,6 +128,73 @@ def format_trash_list(trash: List[Dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
+def _completion_date(completed_at: Optional[str], tz_name: str) -> Optional[date]:
+    """Data locale di completamento: `completed_at` è salvato in UTC da SQLite (CURRENT_TIMESTAMP)."""
+    if not completed_at:
+        return None
+    import pytz
+    moment = datetime.strptime(completed_at[:19], "%Y-%m-%d %H:%M:%S")
+    return pytz.utc.localize(moment).astimezone(pytz.timezone(tz_name)).date()
+
+
+def format_user_history(
+    user_name: str,
+    history: Dict[str, List[Dict[str, Any]]],
+    today: date,
+    tz_name: str,
+) -> List[str]:
+    """Storico di turni e Kosettine di un utente, spezzato in messaggi sotto il limite di Telegram.
+
+    Fatti: data di completamento. Non fatti: data del turno (o settimana per le
+    Kosettine), come mancati se già scaduti o in attesa se ancora in corso.
+    """
+    current_monday = monday_of(today)
+    emojis = _trash_emoji_by_name()
+
+    def line(item: Dict[str, Any], label: str, expired: bool, day_text: str) -> str:
+        if item["is_completed"]:
+            done_on = _completion_date(item.get("completed_at"), tz_name)
+            verb = "recuperato" if item.get("recovered") else "fatto"
+            when = f" il {done_on.strftime('%d/%m/%Y')}" if done_on else ""
+            return f"✅ {label} — {verb}{when}"
+        if expired:
+            return f"❌ {label} — non fatto ({day_text})"
+        return f"🕒 {label} — in attesa ({day_text})"
+
+    shift_lines, trash_lines = [], []
+    for s in history["shifts"]:
+        day = datetime.strptime(s["day"], "%Y-%m-%d").date()
+        shift_lines.append(line(
+            s, f"`{s['name'].upper()}`", day < current_monday, f"previsto {day.strftime('%d/%m/%Y')}"
+        ))
+    for t in history["trash"]:
+        week = datetime.strptime(t["day"], "%Y-%m-%d").date()
+        label = f"{emojis.get(t['name'], '🗑️')} {t['name']}"
+        trash_lines.append(line(t, label, week < current_monday, f"settimana del {week.strftime('%d/%m/%Y')}"))
+
+    def totals(items: List[Dict[str, Any]]) -> str:
+        done = sum(1 for i in items if i["is_completed"])
+        missed = sum(
+            1 for i in items
+            if not i["is_completed"] and datetime.strptime(i["day"], "%Y-%m-%d").date() < current_monday
+        )
+        return f"_{done} ✅ / {missed} ❌ / {len(items) - done - missed} 🕒_"
+
+    lines = [f"📜✨ *STORICO DI {user_name.upper()}* ✨📜", SEPARATOR, f"🧽 *TURNI* {totals(history['shifts'])}\n"]
+    lines += shift_lines or ["Nessun turno ancora."]
+    lines += ["", SEPARATOR, f"🗑️ *KOSETTINE SETTIMANINE* {totals(history['trash'])}\n"]
+    lines += trash_lines or ["Nessuna Kosettina ancora."]
+
+    messages, current = [], ""
+    for ln in lines:
+        if current and len(current) + len(ln) + 1 > 3800:
+            messages.append(current)
+            current = ""
+        current += ("\n" if current else "") + ln
+    messages.append(current)
+    return messages
+
+
 def format_weekly_report(
     monday: date,
     week_shifts: List[Dict[str, Any]],

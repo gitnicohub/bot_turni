@@ -6,7 +6,7 @@ from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
 from config import TIMEZONE
 from database.db_manager import DatabaseManager
-from utils.helpers import format_weekly_calendar, format_trash_list, build_google_calendar_link, WEEKDAY_LABELS
+from utils.helpers import format_weekly_calendar, format_trash_list, format_user_history, build_google_calendar_link, WEEKDAY_LABELS
 from handlers.callback_handler import build_reschedule_keyboard, build_recover_keyboard, broadcast_shift_done, broadcast_trash_done, build_trash_recover_keyboard
 from scheduler.scheduler_jobs import build_previous_week_report
 
@@ -128,6 +128,24 @@ async def trash_done_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         parse_mode=ParseMode.MARKDOWN,
     )
     await broadcast_trash_done(context, registered["name"], done)
+
+async def history_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Manda all'utente il suo storico di turni e Kosettine, fatti e non fatti, con le date (/storico)."""
+    user = update.effective_user
+    if not user:
+        return
+
+    registered = await DatabaseManager.get_user_by_telegram_id(user.id)
+    if not registered:
+        await update.message.reply_text(
+            "⚠️ Non risulti ancora registrato. Usa /start per selezionare il tuo nome tra i coinquilini."
+        )
+        return
+
+    today = datetime.now(pytz.timezone(TIMEZONE)).date()
+    history = await DatabaseManager.get_user_history(user.id)
+    for chunk in format_user_history(registered["name"], history, today, TIMEZONE):
+        await update.message.reply_text(chunk, parse_mode=ParseMode.MARKDOWN)
 
 async def undo_trash_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Annulla un /fattoimmondizia (o ✅) premuto per errore sulle Kosettine di questa settimana (/annullaimmondizia)."""

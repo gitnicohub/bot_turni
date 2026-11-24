@@ -644,6 +644,33 @@ class DatabaseManager:
             return cursor.rowcount > 0
 
     @staticmethod
+    async def get_user_history(telegram_id: int) -> Dict[str, List[Dict[str, Any]]]:
+        """Storico completo dell'utente: turni e compiti Kosettine, dal più recente (/storico)."""
+        shifts_query = """
+        SELECT t.name AS name, s.scheduled_date AS day, s.is_completed, s.completed_at, s.recovered
+        FROM shifts s
+        JOIN cleaning_tasks t ON s.task_id = t.id
+        JOIN users u ON s.user_id = u.id
+        WHERE u.telegram_id = ?
+        ORDER BY s.scheduled_date DESC, s.id DESC;
+        """
+        trash_query = """
+        SELECT c.name AS name, a.week_start AS day, a.is_completed, a.completed_at
+        FROM trash_assignments a
+        JOIN trash_chores c ON a.chore_id = c.id
+        JOIN users u ON a.user_id = u.id
+        WHERE u.telegram_id = ?
+        ORDER BY a.week_start DESC, c.id DESC;
+        """
+        async with aiosqlite.connect(DATABASE_PATH) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(shifts_query, (telegram_id,)) as cursor:
+                shifts = [dict(row) for row in await cursor.fetchall()]
+            async with db.execute(trash_query, (telegram_id,)) as cursor:
+                trash = [dict(row) for row in await cursor.fetchall()]
+        return {"shifts": shifts, "trash": trash}
+
+    @staticmethod
     async def get_trash_stats(today: date) -> List[Dict[str, Any]]:
         """Classifica Kosettine per persona: completati, mancati (settimana scaduta) e in attesa."""
         current_monday = today - timedelta(days=today.weekday())
