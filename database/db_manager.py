@@ -587,6 +587,63 @@ class DatabaseManager:
         return done
 
     @staticmethod
+    async def uncomplete_trash_for_user(telegram_id: int, monday: date) -> List[str]:
+        """Riporta a "in attesa" i compiti Kosettine già fatti dell'utente nella settimana (/annullaimmondizia)."""
+        query = """
+        UPDATE trash_assignments
+        SET is_completed = 0, completed_at = NULL
+        WHERE week_start = ?
+          AND is_completed = 1
+          AND user_id = (SELECT id FROM users WHERE telegram_id = ?);
+        """
+        names = [
+            t["chore_name"] for t in await DatabaseManager.get_trash_for_week(monday)
+            if t["telegram_id"] == telegram_id and t["is_completed"]
+        ]
+        if not names:
+            return []
+        async with aiosqlite.connect(DATABASE_PATH) as db:
+            await db.execute(query, (monday.isoformat(), telegram_id))
+            await db.commit()
+        return names
+
+    @staticmethod
+    async def get_missed_trash_for_user(telegram_id: int, today: date) -> List[Dict[str, Any]]:
+        """Compiti Kosettine scaduti e non fatti dell'utente, dal più vecchio (recuperabili con /recuperaimmondizia)."""
+        current_monday = today - timedelta(days=today.weekday())
+        query = """
+        SELECT a.id AS assignment_id, c.name AS chore_name, u.name AS user_name, a.week_start
+        FROM trash_assignments a
+        JOIN trash_chores c ON a.chore_id = c.id
+        JOIN users u ON a.user_id = u.id
+        WHERE u.telegram_id = ?
+          AND a.is_completed = 0
+          AND a.week_start < ?
+        ORDER BY a.week_start ASC, c.id ASC;
+        """
+        async with aiosqlite.connect(DATABASE_PATH) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(query, (telegram_id, current_monday.isoformat())) as cursor:
+                return [dict(row) for row in await cursor.fetchall()]
+
+    @staticmethod
+    async def recover_trash(assignment_id: int, telegram_id: int, today: date) -> bool:
+        """Segna come fatto un compito Kosettine di una settimana già scaduta (solo dell'utente, non già fatto)."""
+        current_monday = today - timedelta(days=today.weekday())
+        query = """
+        UPDATE trash_assignments
+        SET is_completed = 1, completed_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+          AND is_completed = 0
+          AND week_start < ?
+          AND user_id = (SELECT id FROM users WHERE telegram_id = ?);
+        """
+        async with aiosqlite.connect(DATABASE_PATH) as db:
+            cursor = await db.execute(query, (assignment_id, current_monday.isoformat(), telegram_id))
+            await db.commit()
+            return cursor.rowcount > 0
+
+    @staticmethod
     async def get_trash_stats(today: date) -> List[Dict[str, Any]]:
         """Classifica Kosettine per persona: completati, mancati (settimana scaduta) e in attesa."""
         current_monday = today - timedelta(days=today.weekday())

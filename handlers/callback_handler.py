@@ -213,6 +213,54 @@ async def trash_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         parse_mode=ParseMode.MARKDOWN,
     )
 
+def build_trash_recover_keyboard(missed):
+    """Un bottone per ogni compito Kosettine scaduto e non fatto, più "Annulla"."""
+    buttons = []
+    for t in missed:
+        week = datetime.strptime(t["week_start"], "%Y-%m-%d").date()
+        label = f"♻️ {t['chore_name'].removeprefix('Butta ')} - sett. {week.strftime('%d/%m')}"
+        buttons.append([InlineKeyboardButton(label, callback_data=f"trashrec:{t['assignment_id']}")])
+    buttons.append([InlineKeyboardButton("🙅 Annulla", callback_data="trashrec:skip")])
+    return InlineKeyboardMarkup(buttons)
+
+async def trash_recover_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Gestisce la scelta del compito Kosettine passato da recuperare e avvisa tutti i coinquilini."""
+    query = update.callback_query
+    await query.answer()
+    user = update.effective_user
+    if not user:
+        return
+
+    choice = query.data.split(":")[1]
+    if choice == "skip":
+        await query.edit_message_text("👍 Ok, nessun compito recuperato.")
+        return
+
+    item = await DatabaseManager.get_trash_assignment(int(choice))
+    success = bool(item) and await DatabaseManager.recover_trash(item["assignment_id"], user.id, _today())
+    if not success:
+        await query.edit_message_text("⚠️ Impossibile recuperare il compito (già fatto, non tuo o non ancora scaduto).")
+        return
+
+    week = datetime.strptime(item["week_start"], "%Y-%m-%d").date()
+    logger.info("Kosettine %s della settimana %s recuperate da %s", item["chore_name"], week, item["user_name"])
+    await query.edit_message_text(
+        f"✅ *{item['chore_name']}* della settimana del *{week.strftime('%d/%m/%Y')}* recuperato, bravo/a *{item['user_name']}*!",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+
+    text = (
+        f"♻️ *{item['user_name']}* ha recuperato e buttato {item['chore_name'].removeprefix('Butta ')} "
+        f"della settimana del *{week.strftime('%d/%m/%Y')}*, comblimend strunz!!!! 👏"
+    )
+    for r in await DatabaseManager.get_roommates():
+        if not r["telegram_id"]:
+            continue
+        try:
+            await context.bot.send_message(chat_id=r["telegram_id"], text=text, parse_mode=ParseMode.MARKDOWN)
+        except Exception as e:
+            logger.warning("Impossibile inviare l'avviso di recupero Kosettine a %s: %s", r["telegram_id"], e)
+
 async def reschedule_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Gestisce la scelta del giorno in cui spostare un turno fallito (o il rifiuto)."""
     query = update.callback_query

@@ -11,6 +11,9 @@ from handlers import (
     mark_done_command,
     trash_done_command,
     trash_callback,
+    undo_trash_command,
+    recover_trash_command,
+    trash_recover_callback,
     undo_done_command,
     report_command,
     reschedule_command,
@@ -40,6 +43,8 @@ BOT_COMMANDS = [
     BotCommand("turni", "Calendario turni della settimana"),
     BotCommand("fatto", "Segna il tuo turno come completato"),
     BotCommand("fattoimmondizia", "Segna come fatto il tuo compito delle Kosettine"),
+    BotCommand("annullaimmondizia", "Annulla un /fattoimmondizia premuto per errore"),
+    BotCommand("recuperaimmondizia", "Recupera una Kosettina passata non fatta"),
     BotCommand("annulla", "Annulla un /fatto premuto per errore"),
     BotCommand("sposta", "Sposta il tuo turno a un altro giorno della settimana"),
     BotCommand("recupera", "Recupera un turno passato non completato"),
@@ -92,6 +97,8 @@ def main() -> None:
     application.add_handler(CommandHandler("turni", list_shifts_command))
     application.add_handler(CommandHandler("fatto", mark_done_command))
     application.add_handler(CommandHandler("fattoimmondizia", trash_done_command))
+    application.add_handler(CommandHandler("annullaimmondizia", undo_trash_command))
+    application.add_handler(CommandHandler("recuperaimmondizia", recover_trash_command))
     application.add_handler(CommandHandler("annulla", undo_done_command))
     application.add_handler(CommandHandler("sposta", reschedule_command))
     application.add_handler(CommandHandler("recupera", recover_command))
@@ -99,6 +106,7 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(claim_callback, pattern=r"^claim:"))
     application.add_handler(CallbackQueryHandler(verify_callback, pattern=r"^verify:"))
     application.add_handler(CallbackQueryHandler(trash_callback, pattern=r"^trash:"))
+    application.add_handler(CallbackQueryHandler(trash_recover_callback, pattern=r"^trashrec:"))
     application.add_handler(CallbackQueryHandler(reschedule_callback, pattern=r"^reschedule:"))
     application.add_handler(CallbackQueryHandler(recover_callback, pattern=r"^recover:"))
 

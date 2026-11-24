@@ -328,3 +328,107 @@ def test_callback_done_broadcasts_once_fail_never(db, fixed_week):
     n = ctx.bot.send_message.call_count
     run(ch.trash_callback(_cb_update(f"trash:{aid}:done", 111), ctx))
     assert ctx.bot.send_message.call_count == n
+
+
+# ---------- annulla e recupero ----------
+
+def test_undo_trash_reverts_only_own_current_week(db, fixed_week):
+    run(DatabaseManager.ensure_week_trash(START))
+    run(DatabaseManager.complete_trash_for_user(111, START))
+    run(DatabaseManager.complete_trash_for_user(222, START))
+
+    upd = _msg_update(111)
+    run(sh.undo_trash_command(upd, _ctx()))
+    assert "in attesa" in upd.message.reply_text.call_args.args[0]
+    assert not any(t["is_completed"] for t in _assigned_to(111))
+    assert all(t["is_completed"] for t in _assigned_to(222))
+
+    again = _msg_update(111)
+    run(sh.undo_trash_command(again, _ctx()))
+    assert "niente da annullare" in again.message.reply_text.call_args.args[0]
+
+
+def test_undo_trash_requires_registration(db, fixed_week):
+    upd = _msg_update(999)
+    run(sh.undo_trash_command(upd, _ctx()))
+    assert "registrato" in upd.message.reply_text.call_args.args[0]
+
+
+def _seed_past_weeks():
+    """Settimane passate: START-14 e START-7 generate, poi START (corrente)."""
+    async def go():
+        for w in (-2, -1, 0):
+            await DatabaseManager.ensure_week_trash(START + timedelta(days=7 * w))
+    run(go())
+
+
+def test_missed_trash_only_own_past_uncompleted(db):
+    _seed_past_weeks()
+    missed = run(DatabaseManager.get_missed_trash_for_user(111, START))
+    assert len(missed) == 2  # le due settimane passate, non la corrente
+    assert [m["week_start"] for m in missed] == sorted(m["week_start"] for m in missed)
+    assert all(m["week_start"] < START.isoformat() for m in missed)
+
+    run(DatabaseManager.recover_trash(missed[0]["assignment_id"], 111, START))
+    assert len(run(DatabaseManager.get_missed_trash_for_user(111, START))) == 1
+
+
+def test_recover_trash_rejects_current_week_foreign_and_done(db):
+    _seed_past_weeks()
+    current = _assigned_to(111)[0]["assignment_id"]
+    assert run(DatabaseManager.recover_trash(current, 111, START)) is False  # settimana corrente
+    past = run(DatabaseManager.get_missed_trash_for_user(111, START))[0]["assignment_id"]
+    assert run(DatabaseManager.recover_trash(past, 222, START)) is False  # di un altro
+    assert run(DatabaseManager.recover_trash(past, 111, START)) is True
+    assert run(DatabaseManager.recover_trash(past, 111, START)) is False  # già fatto
+
+
+def test_recover_trash_updates_stats(db):
+    _seed_past_weeks()
+    before = {r["user_name"]: r for r in run(DatabaseManager.get_trash_stats(START))}["Miguel de Segantes"]
+    past = run(DatabaseManager.get_missed_trash_for_user(111, START))[0]["assignment_id"]
+    run(DatabaseManager.recover_trash(past, 111, START))
+    after = {r["user_name"]: r for r in run(DatabaseManager.get_trash_stats(START))}["Miguel de Segantes"]
+    assert after["completed"] == before["completed"] + 1
+    assert after["missed"] == before["missed"] - 1
+
+
+def test_recover_trash_command_lists_or_says_in_regola(db, monkeypatch, fixed_week):
+    _seed_past_weeks()
+    upd = _msg_update(111)
+    run(sh.recover_trash_command(upd, _ctx()))
+    kb = upd.message.reply_text.call_args.kwargs["reply_markup"]
+    data = [row[0].callback_data for row in kb.inline_keyboard]
+    assert data[-1] == "trashrec:skip" and len(data) == 3
+
+    for d in data[:-1]:
+        run(DatabaseManager.recover_trash(int(d.split(":")[1]), 111, START))
+    upd2 = _msg_update(111)
+    run(sh.recover_trash_command(upd2, _ctx()))
+    assert "in regola" in upd2.message.reply_text.call_args.args[0]
+
+
+def test_recover_trash_callback_broadcasts_once(db, fixed_week):
+    _seed_past_weeks()
+    past = run(DatabaseManager.get_missed_trash_for_user(111, START))[0]["assignment_id"]
+    ctx = _ctx()
+    upd = _cb_update(f"trashrec:{past}", 111)
+    run(ch.trash_recover_callback(upd, ctx))
+    assert "recuperato" in upd.callback_query.edit_message_text.call_args.args[0]
+    assert set(_broadcasts(ctx)) == set(TG_IDS.values())
+    assert all("ha recuperato e buttato" in t for t in _broadcasts(ctx).values())
+
+    n = ctx.bot.send_message.call_count
+    run(ch.trash_recover_callback(_cb_update(f"trashrec:{past}", 111), ctx))
+    assert ctx.bot.send_message.call_count == n
+
+
+def test_recover_trash_callback_rejects_foreign_and_skip(db, fixed_week):
+    _seed_past_weeks()
+    past = run(DatabaseManager.get_missed_trash_for_user(111, START))[0]["assignment_id"]
+    ctx = _ctx()
+    upd = _cb_update(f"trashrec:{past}", 222)
+    run(ch.trash_recover_callback(upd, ctx))
+    assert "Impossibile" in upd.callback_query.edit_message_text.call_args.args[0]
+    run(ch.trash_recover_callback(_cb_update("trashrec:skip", 111), ctx))
+    ctx.bot.send_message.assert_not_called()

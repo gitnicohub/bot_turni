@@ -7,7 +7,7 @@ from telegram.constants import ParseMode
 from config import TIMEZONE
 from database.db_manager import DatabaseManager
 from utils.helpers import format_weekly_calendar, format_trash_list, build_google_calendar_link, WEEKDAY_LABELS
-from handlers.callback_handler import build_reschedule_keyboard, build_recover_keyboard, broadcast_shift_done, broadcast_trash_done
+from handlers.callback_handler import build_reschedule_keyboard, build_recover_keyboard, broadcast_shift_done, broadcast_trash_done, build_trash_recover_keyboard
 from scheduler.scheduler_jobs import build_previous_week_report
 
 logger = logging.getLogger(__name__)
@@ -128,6 +128,57 @@ async def trash_done_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         parse_mode=ParseMode.MARKDOWN,
     )
     await broadcast_trash_done(context, registered["name"], done)
+
+async def undo_trash_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Annulla un /fattoimmondizia (o ✅) premuto per errore sulle Kosettine di questa settimana (/annullaimmondizia)."""
+    user = update.effective_user
+    if not user:
+        return
+
+    registered = await DatabaseManager.get_user_by_telegram_id(user.id)
+    if not registered:
+        await update.message.reply_text(
+            "⚠️ Non risulti ancora registrato. Usa /start per selezionare il tuo nome tra i coinquilini."
+        )
+        return
+
+    undone = await DatabaseManager.uncomplete_trash_for_user(user.id, _current_monday())
+    if not undone:
+        await update.message.reply_text(
+            "ℹ️ Nessun compito Kosettine completato questa settimana: niente da annullare."
+        )
+        return
+
+    logger.info("Kosettine %s riportate a in attesa da %s", undone, registered["name"])
+    await update.message.reply_text(
+        f"↩️ Ok *{registered['name']}*, *{', '.join(undone)}* riportato a *in attesa*.\n"
+        "Usa `/fattoimmondizia` quando l'hai fatto davvero.",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+
+async def recover_trash_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Mostra i propri compiti Kosettine passati non fatti e permette di recuperarli (/recuperaimmondizia)."""
+    user = update.effective_user
+    if not user:
+        return
+
+    registered = await DatabaseManager.get_user_by_telegram_id(user.id)
+    if not registered:
+        await update.message.reply_text(
+            "⚠️ Non risulti ancora registrato. Usa /start per selezionare il tuo nome tra i coinquilini."
+        )
+        return
+
+    today = datetime.now(pytz.timezone(TIMEZONE)).date()
+    missed = await DatabaseManager.get_missed_trash_for_user(user.id, today)
+    if not missed:
+        await update.message.reply_text("🎉 Non hai Kosettine passate da recuperare: sei in regola!")
+        return
+
+    await update.message.reply_text(
+        "♻️ Quale compito Kosettine passato vuoi recuperare?",
+        reply_markup=build_trash_recover_keyboard(missed),
+    )
 
 async def undo_done_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Annulla un /fatto (o ✅) premuto per errore sul turno di questa settimana (/annulla)."""
