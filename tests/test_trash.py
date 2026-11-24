@@ -156,19 +156,19 @@ def _assigned_to(tg):
 
 def test_fattoimmondizia_marks_done_and_is_idempotent(db, fixed_week):
     upd = _msg_update(111)
-    run(sh.trash_done_command(upd, MagicMock()))
+    run(sh.trash_done_command(upd, _ctx()))
     assert "Segnato come fatto" in upd.message.reply_text.call_args.args[0]
     assert all(t["is_completed"] for t in _assigned_to(111))
     assert not any(t["is_completed"] for t in _assigned_to(222))
 
     upd2 = _msg_update(111)
-    run(sh.trash_done_command(upd2, MagicMock()))
+    run(sh.trash_done_command(upd2, _ctx()))
     assert "già fatto" in upd2.message.reply_text.call_args.args[0]
 
 
 def test_fattoimmondizia_requires_registration(db, fixed_week):
     upd = _msg_update(999)
-    run(sh.trash_done_command(upd, MagicMock()))
+    run(sh.trash_done_command(upd, _ctx()))
     assert "registrato" in upd.message.reply_text.call_args.args[0]
 
 
@@ -293,3 +293,38 @@ def test_previous_week_report_end_to_end(db):
     run(DatabaseManager.ensure_week_trash(START))
     text = run(jobs.build_previous_week_report(START + timedelta(days=7)))
     assert "KOSETTINE" in text
+
+
+# ---------- broadcast al completamento ----------
+
+def _broadcasts(ctx):
+    return {c.kwargs["chat_id"]: c.kwargs["text"] for c in ctx.bot.send_message.call_args_list}
+
+
+def test_fattoimmondizia_broadcasts_to_everyone(db, fixed_week):
+    ctx = _ctx()
+    run(sh.trash_done_command(_msg_update(111), ctx))
+    chore = _assigned_to(111)[0]["chore_name"]
+    sent = _broadcasts(ctx)
+    assert set(sent) == set(TG_IDS.values())
+    expected = f"*Miguel de Segantes* ha buttato {chore.removeprefix('Butta ')}, comblimend strunz!!!!"
+    assert all(expected in t for t in sent.values())
+
+    ctx2 = _ctx()  # secondo invio: già fatto, nessun broadcast
+    run(sh.trash_done_command(_msg_update(111), ctx2))
+    ctx2.bot.send_message.assert_not_called()
+
+
+def test_callback_done_broadcasts_once_fail_never(db, fixed_week):
+    run(DatabaseManager.ensure_week_trash(START))
+    aid = _assigned_to(111)[0]["assignment_id"]
+
+    ctx = _ctx()
+    run(ch.trash_callback(_cb_update(f"trash:{aid}:fail", 111), ctx))
+    ctx.bot.send_message.assert_not_called()
+
+    run(ch.trash_callback(_cb_update(f"trash:{aid}:done", 111), ctx))
+    assert set(_broadcasts(ctx)) == set(TG_IDS.values())
+    n = ctx.bot.send_message.call_count
+    run(ch.trash_callback(_cb_update(f"trash:{aid}:done", 111), ctx))
+    assert ctx.bot.send_message.call_count == n

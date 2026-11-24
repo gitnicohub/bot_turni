@@ -7,7 +7,7 @@ from telegram.constants import ParseMode
 from config import TIMEZONE
 from database.db_manager import DatabaseManager
 from utils.helpers import format_weekly_calendar, format_trash_list, build_google_calendar_link, WEEKDAY_LABELS
-from handlers.callback_handler import build_reschedule_keyboard, build_recover_keyboard, broadcast_shift_done
+from handlers.callback_handler import build_reschedule_keyboard, build_recover_keyboard, broadcast_shift_done, broadcast_trash_done
 from scheduler.scheduler_jobs import build_previous_week_report
 
 logger = logging.getLogger(__name__)
@@ -127,6 +127,7 @@ async def trash_done_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         f"🗑️✅ Ottimo lavoro *{registered['name']}*! Segnato come fatto: *{', '.join(done)}*.",
         parse_mode=ParseMode.MARKDOWN,
     )
+    await broadcast_trash_done(context, registered["name"], done)
 
 async def undo_done_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Annulla un /fatto (o ✅) premuto per errore sul turno di questa settimana (/annulla)."""

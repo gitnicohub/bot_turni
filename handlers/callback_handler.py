@@ -65,6 +65,18 @@ async def broadcast_shift_done(context: ContextTypes.DEFAULT_TYPE, user_name: st
         except Exception as e:
             logger.warning("Impossibile inviare l'avviso di turno fatto a %s: %s", r["telegram_id"], e)
 
+async def broadcast_trash_done(context: ContextTypes.DEFAULT_TYPE, user_name: str, chore_names: list) -> None:
+    """Avvisa tutti i coinquilini registrati che `user_name` ha buttato i rifiuti di `chore_names`."""
+    items = " e ".join(n.removeprefix("Butta ") for n in chore_names)
+    text = f"🗑️ *{user_name}* ha buttato {items}, comblimend strunz!!!! 👏"
+    for r in await DatabaseManager.get_roommates():
+        if not r["telegram_id"]:
+            continue
+        try:
+            await context.bot.send_message(chat_id=r["telegram_id"], text=text, parse_mode=ParseMode.MARKDOWN)
+        except Exception as e:
+            logger.warning("Impossibile inviare l'avviso Kosettine a %s: %s", r["telegram_id"], e)
+
 async def claim_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Gestisce il click su un nome nella tastiera di /start: associa telegram_id al nome."""
     query = update.callback_query
@@ -190,6 +202,7 @@ async def trash_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 f"✅ Ottimo lavoro *{item['user_name']}*! *{item['chore_name']}* segnato come fatto.",
                 parse_mode=ParseMode.MARKDOWN,
             )
+            await broadcast_trash_done(context, item["user_name"], [item["chore_name"]])
         else:
             await query.edit_message_text("⚠️ Questo compito risultava già segnato come fatto.")
         return
