@@ -7,7 +7,7 @@ from telegram.constants import ParseMode
 from config import TIMEZONE
 from database.db_manager import DatabaseManager
 from utils.helpers import format_weekly_calendar, build_google_calendar_link, WEEKDAY_LABELS
-from handlers.callback_handler import build_reschedule_keyboard, build_recover_keyboard
+from handlers.callback_handler import build_reschedule_keyboard, build_recover_keyboard, broadcast_shift_done
 from scheduler.scheduler_jobs import build_previous_week_report
 
 logger = logging.getLogger(__name__)
@@ -81,6 +81,7 @@ async def mark_done_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             f"✅ Ottimo lavoro *{registered['name']}*! Turno *{shift['task_name']}* segnato come completato.",
             parse_mode=ParseMode.MARKDOWN
         )
+        await broadcast_shift_done(context, registered["name"], shift["task_name"])
     else:
         await update.message.reply_text("⚠️ Impossibile completare il turno. Riprova più tardi.")
 

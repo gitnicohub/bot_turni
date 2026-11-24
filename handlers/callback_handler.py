@@ -54,6 +54,17 @@ def build_recover_keyboard(missed_shifts):
     buttons.append([InlineKeyboardButton("🙅 Annulla", callback_data="recover:skip")])
     return InlineKeyboardMarkup(buttons)
 
+async def broadcast_shift_done(context: ContextTypes.DEFAULT_TYPE, user_name: str, task_name: str) -> None:
+    """Avvisa tutti i coinquilini registrati che `user_name` ha completato il turno."""
+    text = f"💪 *{user_name}* ha fatto metà del suo dovere facendo il *{task_name}*"
+    for r in await DatabaseManager.get_roommates():
+        if not r["telegram_id"]:
+            continue
+        try:
+            await context.bot.send_message(chat_id=r["telegram_id"], text=text, parse_mode=ParseMode.MARKDOWN)
+        except Exception as e:
+            logger.warning("Impossibile inviare l'avviso di turno fatto a %s: %s", r["telegram_id"], e)
+
 async def claim_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Gestisce il click su un nome nella tastiera di /start: associa telegram_id al nome."""
     query = update.callback_query
@@ -107,6 +118,7 @@ async def verify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 f"✅ Ottimo lavoro *{shift['user_name']}*! Turno *{shift['task_name']}* confermato come completato.",
                 parse_mode=ParseMode.MARKDOWN
             )
+            await broadcast_shift_done(context, shift["user_name"], shift["task_name"])
         else:
             await query.edit_message_text("⚠️ Questo turno risultava già segnato come completato.")
         return
